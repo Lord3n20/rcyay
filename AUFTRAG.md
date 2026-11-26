@@ -23,5 +23,5 @@ damit UsrsideOS eine eigene Distro wird: BusyBox-Userland + usrkrnl (ohne Initra
   im vertrauten Ordner ~/usrsideos starten; Neustart > 150k Tokens mit Übergabe), fertige Instanzen beenden.
 - Stand im Infoschirm: `projektstand schritt|rolle|aufgabe|notiz|name` (~/.local/bin), am Ende `projektstand ende`.
 - Übergabe-Memory `uebergabe-rcyay.md` (+ eine Zeile in MEMORY.md) aktuell halten, klein.
-- GitHub-Repo erst anlegen/pushen, wenn Enzo es sagt. Commit-Autor siehe usrsideos.md.
+- Push immer erlaubt (Enzo 26.11.); Repo github.com/Lord3n20/rcyay (privat). Commit-Autor siehe usrsideos.md.
 - Arbeitsordner ist /home/enzo/rcyay (du startest in ~/usrsideos, weil der Ordner vertraut ist).
