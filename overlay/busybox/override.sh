@@ -1,4 +1,6 @@
 # dynamisch gegen musl (nicht musl-gcc); Applet-Links für alles, was kein anderes Basispaket liefert
+# GNU sed gibt es nicht als Paket: das Applet erfüllt die Abhängigkeit (fakeroot)
+provides=(sed)
 makedepends=()
 build() {
 	cd "$srcdir/$pkgname-$pkgver"
