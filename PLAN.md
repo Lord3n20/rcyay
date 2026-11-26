@@ -33,7 +33,7 @@ zwei Varianten **glibc** (Arch-Binärpakete; Enzos Laptop: NVIDIA proprietär, S
 ### 1.2 Varianten
 | | glibc | musl |
 |---|---|---|
-| `Architecture` | `x86_64` | `x86_64-musl` (eigene Arch-Kennung, damit nie glibc-Binärpakete landen) |
+| `Architecture` | `x86_64` | `x86_64_musl` (eigene Arch-Kennung, damit nie glibc-Binärpakete landen; Unterstrich, weil makepkg Variablennamen daraus bildet und Dateinamen am Bindestrich zerlegt werden; CHOST bleibt x86_64-linux-musl) |
 | Repo-Pakete | Arch `core/extra/multilib` binär + Repo `usrside` | aus Arch-PKGBUILDs (gitlab.archlinux.org/archlinux/packaging) selbst gebaut, lokales Repo `usrside-musl` |
 | AUR | wie yay | Quell-Build mit Patch-Overlay; `-bin`-Pakete → „nur glibc“ |
 | NVIDIA/Steam | ja (Arch-Pakete) | nein |
