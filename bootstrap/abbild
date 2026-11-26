@@ -185,6 +185,10 @@ installieren() {
 		LABEL=ESP     /efi  vfat  noauto,umask=0077 0 2
 	EOF
 	printf 'usrside-%s\n' "$VARIANTE" >"$MNT/etc/hostname"
+	# /etc/issue ohne agetty-Escapes: BusyBox-getty kennt \S{PRETTY_NAME} nicht (Befund t1)
+	local osname
+	osname=$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$MNT/etc/os-release" "$MNT/usr/lib/os-release" 2>/dev/null | head -n1)
+	printf '%s \\r (\\l)\n\n' "${osname:-UsrsideOS ($VARIANTE)}" >"$MNT/etc/issue"
 	sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$MNT/etc/ssh/sshd_config"
 	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=);
 	# ein vorhandener Eintrag bleibt, außer ABBILD_INIT ist gesetzt
