@@ -46,7 +46,7 @@ belegt alle *freien* Pfade (z. B. `which`, `init`, `getty`, `mdev`, `killall5`) 
 | Profil | VirtualProvides | Folge |
 |---|---|---|
 | standard (Standard) | `which` | GNU coreutils/findutils/grep/sed/gawk/util-linux bleiben (makepkg, Paketskripte, AUR sicher) |
-| minimal (Option, `PROFIL=minimal`) | `which coreutils findutils grep sed gawk diffutils` | BusyBox statt GNU; makepkg und manche Paketskripte (GNU-Optionen) können scheitern |
+| minimal (Option, `PROFIL=minimal`) | `which coreutils findutils grep sed gawk awk diffutils` | BusyBox statt GNU; makepkg und manche Paketskripte (GNU-Optionen) können scheitern |
 
 `sh` braucht keinen Eintrag (Arch-bash stellt `sh` bereit, bash bleibt für makepkg). `inetutils` (hostname, ftp,
 telnet …) zieht kein Grundpaket; `hostname` kommt bei Bedarf von BusyBox über den freien Pfad.

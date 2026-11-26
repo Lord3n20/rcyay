@@ -15,7 +15,7 @@
 # Umgebung:
 #   PROFIL    standard (Standard): VirtualProvides nur, was BusyBox sicher erfüllt (which); GNU-Werkzeuge
 #             kommen über die Abhängigkeiten von pacman/systemd mit (Zuverlässigkeit vor Reinheit)
-#             minimal: zusätzlich coreutils findutils grep sed gawk diffutils (BusyBox statt GNU; makepkg und
+#             minimal: zusätzlich coreutils findutils grep sed gawk awk diffutils (BusyBox statt GNU; makepkg und
 #             manche Paketskripte können dann scheitern – nur als Option)
 #   INIT      Init in /etc/rcyay.conf (runit, Standard); die Dienste werden trotzdem für alle Inits eingeschaltet
 #   EXTRA     weitere Pakete (z. B. "niri foot mesa")
@@ -39,7 +39,7 @@ abbruch() { printf 'glibc-rootfs: %s\n' "$*" >&2; exit 1; }
 ((EUID == 0)) || abbruch "braucht root (Wegwerf-Bau-VM)"
 case $PROFIL in
 	standard) VPROV="which" ;;
-	minimal) VPROV="which coreutils findutils grep sed gawk diffutils" ;;
+	minimal) VPROV="which coreutils findutils grep sed gawk awk diffutils" ;;
 	*) abbruch "PROFIL muss standard oder minimal sein" ;;
 esac
 case $INIT in systemd | busybox | runit | s6) ;; *) abbruch "INIT: systemd, busybox, runit oder s6" ;; esac
