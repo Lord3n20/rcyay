@@ -1,5 +1,0 @@
-post_install() {
-	# /etc/mtab wird nicht verpackt
-	[ -e etc/mtab ] || ln -sf ../proc/self/mounts etc/mtab
-}
-post_upgrade() { post_install; }

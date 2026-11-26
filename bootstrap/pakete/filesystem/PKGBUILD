@@ -1,13 +1,12 @@
 # UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
 pkgname=filesystem
 pkgver=2026.11.26
-pkgrel=1
+pkgrel=2
 pkgdesc='UsrsideOS base filesystem layout'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
 license=(GPL-2.0-only)
 backup=(etc/fstab etc/group etc/hostname etc/hosts etc/passwd etc/profile etc/resolv.conf etc/shadow etc/shells)
-install=filesystem.install
 
 package() {
 	cd "$pkgdir"
@@ -15,6 +14,8 @@ package() {
 		usr/{bin,include,lib,local/{bin,lib,share},share/{man,misc,licenses}} var/{cache,empty,lib,local,log,opt,spool}
 	install -dm1777 tmp var/tmp
 	install -dm0750 root
+	# /etc/mtab mitverpackt (wie Arch): ein Scriptlet läuft beim ersten Paket noch ohne Shell im Ziel
+	ln -s ../proc/self/mounts etc/mtab
 	ln -s usr/bin bin
 	ln -s usr/bin sbin
 	ln -s usr/lib lib
