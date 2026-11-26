@@ -1,7 +1,7 @@
 # UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
 pkgname=filesystem
 pkgver=2026.11.26
-pkgrel=2
+pkgrel=3
 pkgdesc='UsrsideOS base filesystem layout'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
@@ -46,6 +46,8 @@ package() {
 		video:x:13:
 		utmp:x:20:
 		input:x:97:
+		render:x:98:
+		seat:x:960:
 		kvm:x:78:
 		bau:x:1000:
 		nobody:x:65534:
