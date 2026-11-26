@@ -168,6 +168,7 @@ pakete_installieren() { # pakete_installieren ZIEL
 	mkdir -p "$ziel/var/lib/pacman" "$ziel/var/cache/pacman/pkg" "$ziel/srv/$REPONAME"
 	# Repo ins Abbild (rcyay -Syu im Abbild nutzt file:///srv/usrside-VARIANTE)
 	cp -a "$REPO/." "$ziel/srv/$REPONAME/"
+	chown -R 0:0 "$ziel/srv/$REPONAME"
 	# Installation mit rcyay aus dem stage2-chroot (musl), Ziel als -r
 	chroot_grund "$WURZEL"
 	einhaengen "$WURZEL" "$ziel" /mnt/abbild --bind
@@ -196,6 +197,13 @@ rootfs_bauen() {
 	else
 		pakete_installieren "$RFS"
 	fi
+
+	# Heimordner des Nutzers bau gehört ihm (Pakete sind root:root, siehe besitzer-reparieren)
+	[[ -d $RFS/home/bau ]] && chown 1000:1000 "$RFS/home/bau"
+	# Kontrolle: außer /home darf nichts dem Bau-Nutzer (1000) gehören (Befund t1: sshd und /var/empty)
+	local fremd
+	fremd=$(find "$RFS" -xdev \( -path "$RFS/home" -prune \) -o \( -uid 1000 -print -quit \))
+	[[ -z $fremd ]] || abbruch "Rootfs enthält Dateien, die nicht root gehören (zuerst bootstrap/besitzer-reparieren): $fremd"
 
 	# Kernel-Module und Kernel
 	make -C "$tree" LLVM="$(dirname "$(command -v clang)")/" LOCALVERSION= INSTALL_MOD_PATH="$RFS/usr" \
