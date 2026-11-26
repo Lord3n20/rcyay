@@ -76,6 +76,7 @@ conf.set_quoted('LOGFILE', join_paths(LOCALSTATEDIR, 'log/pacman.log'))
 conf.set_quoted('CACHEDIR', join_paths(LOCALSTATEDIR, 'cache/pacman/pkg/'))
 conf.set_quoted('HOOKDIR', join_paths(SYSCONFDIR, 'pacman.d/hooks/'))
 conf.set_quoted('ROOTDIR', ROOTDIR)
+conf.set_quoted('RCYAY_CONF', join_paths(SYSCONFDIR, 'rcyay.conf'))
 
 libintl = dependency('', required: false)
 if get_option('i18n')
@@ -305,6 +306,8 @@ subdir('lib/libalpm')
 subdir('src/common')
 subdir('src/pacman')
 subdir('src/util')
+subdir('lib/libaur')
+subdir('src/rcyay')
 subdir('scripts')
 
 # Internationalization
@@ -371,6 +374,33 @@ pacman_bin = executable(
   include_directories : includes,
   link_with : [libalpm, libcommon],
   dependencies : [libarchive],
+  install : true,
+)
+
+# rcyay: pacman-Oberfläche als Bibliothek (main → pacman_main) + libaur
+libaur_includes = include_directories('lib/libaur')
+
+libaur = static_library(
+  'aur',
+  libaur_sources,
+  include_directories : includes,
+  dependencies : [libcurl, libarchive],
+  install : false)
+
+libpacmanui = static_library(
+  'pacmanui',
+  pacman_sources,
+  c_args : ['-Dmain=pacman_main'],
+  include_directories : includes,
+  dependencies : [libarchive],
+  install : false)
+
+rcyay_bin = executable(
+  'rcyay',
+  rcyay_sources,
+  include_directories : [include_directories('src/pacman'), includes, libaur_includes],
+  link_with : [libpacmanui, libaur, libalpm, libcommon],
+  dependencies : [libarchive, libcurl],
   install : true,
 )
 
@@ -466,6 +496,7 @@ TEST_ENV.set('PMTEST_SCRIPT_DIR', join_paths(meson.project_build_root(), 'script
 subdir('test/pacman')
 subdir('test/scripts')
 subdir('test/util')
+subdir('tests/rcyay')
 
 message('\n    '.join([
   '@0@ @1@'.format(meson.project_name(), meson.project_version()),
