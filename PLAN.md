@@ -89,8 +89,9 @@ tests/rcyay/  eigene Tests (Mock-AUR, SRCINFO, Graph)  pkg/        PKGBUILDs fü
 | M4 | glibc-Variante: Abbild + Arch-Repos, BusyBox-Userland, VirtualProvides | VM bootet, Arch-Pakete + Steam/nvidia-utils installierbar, niri läuft |
 | M5 | musl-Quellbuilds: Overlay, nur-glibc, Basis + Desktop (niri, foot/kitty, pipewire) | Liste der Pakete baut in VM |
 | M6 | UsrsideOS-Installer `os/usrside` (glibc/musl) in ~/usrsideos | `test-install usrside 1` grün, Laptop-Profil (NVIDIA+TUXEDO) grün |
+| M7 | **Live-/Installer-ISO** des puren UsrsideOS (Enzo 26.11.): bootet von Ventoy-Stick (UEFI), läuft selbst auf UsrsideOS (glibc, BusyBox, rcyay), Installer installiert glibc- (Standard, Laptop-Profil) oder musl-Variante mit Init-Wahl. Nur das Live-Medium hat ein winziges BusyBox-initramfs (sucht die ISO auf allen Partitionen inkl. Ventoy-exFAT bzw. Ventoy-dm-Abbildung, Squashfs + overlayfs); das installierte System bootet ohne Initramfs | ISO bootet in VM direkt UND über Ventoy (Ventoy2Disk auf virtueller Platte), Installation glibc+musl in VM bootet, danach ISO auf Enzos Ventoy-Stick (sda1, exFAT) kopieren |
 
-Reihenfolge: M0 → (M1 ‖ M3-Vorarbeit stage0/1) → M2 → M3 → M4 → M5 → M6.
+Reihenfolge: M0 → (M1 ‖ M3-Vorarbeit stage0/1) → M2 → M3 → M4 → M5 → M6 → M7.
 
 ## 3. Testplan (nur in VMs, ~/vm)
 - **Einheit:** `meson test` in der Arch-VM: pacman-Testsuite (pactest, muss grün bleiben) + `tests/rcyay`
