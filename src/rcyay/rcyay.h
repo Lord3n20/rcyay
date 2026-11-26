@@ -154,6 +154,7 @@ void rc_vprov_add(const char *file, int line, const char *value);
 int rc_vprov_satisfies(const char *dep);
 int rc_vprov_sync(void);
 int rc_vprov_main(const char *cmd);
+void rc_busybox_overwrite(void);
 
 /* extra.c */
 int rc_op_clean(void);

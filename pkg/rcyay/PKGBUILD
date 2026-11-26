@@ -1,0 +1,59 @@
+# UsrsideOS: rcyay aus diesem Baum (pacman-Fork mit AUR, VirtualProvides, rcyay-dienste).
+# Nur das Programm rcyay (libalpm statisch gelinkt) – pacman, makepkg und libalpm.so
+# kommen auf glibc weiter aus Arch (Paket pacman), daher keine Dateikonflikte.
+# /etc/rcyay.conf und die alpm-Hooks liefert usrside-init.
+#   cd pkg/rcyay && makepkg            (Quelle: ../.. bzw. RCYAY_SRC=PFAD)
+pkgname=rcyay
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='pacman with AUR support (like yay), VirtualProvides and init-neutral services'
+arch=(x86_64 x86_64_musl)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-or-later)
+depends=(pacman curl libarchive gpgme openssl)
+depends_x86_64=(glibc)
+depends_x86_64_musl=(musl)
+makedepends=(meson ninja)
+optdepends=('git: diffs between AUR snapshots'
+            'sudo: running as a normal user'
+            'usrside-init: /etc/rcyay.conf and service hooks')
+options=(!lto)
+
+_src() { realpath "${RCYAY_SRC:-$startdir/../..}"; }
+
+pkgver() {
+	local s v n
+	s=$(_src)
+	v=$(sed -n 's/^#define RCYAY_VERSION "\(.*\)"/\1/p' "$s/src/rcyay/rcyay.h")
+	if n=$(git -C "$s" rev-list --count HEAD 2>/dev/null); then
+		printf '%s.r%s.g%s\n' "$v" "$n" "$(git -C "$s" rev-parse --short=8 HEAD)"
+	else
+		printf '%s\n' "$v"
+	fi
+}
+
+build() {
+	meson setup --prefix=/usr --sysconfdir=/etc --localstatedir=/var --buildtype=plain \
+		-Ddoc=disabled "$srcdir/build" "$(_src)"
+	meson compile -C "$srcdir/build"
+}
+
+check() {
+	meson test -C "$srcdir/build" --suite rcyay
+}
+
+package() {
+	local i="$srcdir/inst"
+	rm -rf "$i"
+	meson install -C "$srcdir/build" --destdir "$i" --quiet
+	# nur rcyay-eigene Dateien; pacman/makepkg/libalpm bleiben beim Paket pacman
+	install -Dm755 "$i/usr/bin/rcyay" "$pkgdir/usr/bin/rcyay"
+	for mo in "$i"/usr/share/locale/*/LC_MESSAGES/rcyay.mo; do
+		[ -f "$mo" ] || continue
+		install -Dm644 "$mo" "$pkgdir/${mo#"$i"/}"
+	done
+	mkdir -p "$pkgdir/usr/share/rcyay"
+	cp -r --no-preserve=ownership "$i/usr/share/rcyay/overlay" "$pkgdir/usr/share/rcyay/"
+	install -Dm644 "$i/etc/rcyay.conf" "$pkgdir/usr/share/rcyay/rcyay.conf.example"
+	install -Dm644 "$(_src)/COPYING" "$pkgdir/usr/share/licenses/$pkgname/COPYING"
+}

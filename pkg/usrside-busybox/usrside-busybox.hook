@@ -1,0 +1,18 @@
+# usrside-busybox: freie /usr/bin-Pfade mit BusyBox-Applets belegen (z. B. nach -R coreutils)
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Operation = Remove
+Target = usr/bin/*
+
+[Trigger]
+Type = Package
+Operation = Install
+Operation = Upgrade
+Target = busybox
+
+[Action]
+Description = Linking free BusyBox applets (usrside-busybox)...
+When = PostTransaction
+Exec = /usr/lib/usrside-busybox/links

@@ -1,0 +1,37 @@
+# UsrsideOS: BusyBox-Userland. Feste Paketdateien sind nur /usr/lib/busybox/bin/* (alle Applets).
+# Die Befehle /usr/bin/APPLET -> busybox legt ein alpm-Hook an – genau für die Pfade, die frei
+# sind (kein Paket, keine Datei). Ein feste Liste im Paket ginge nicht: in den Arch-Repos gehört
+# jeder Applet-Pfad irgendeinem Paket (coreutils, util-linux, procps-ng …), feste Links würden
+# also spätere Installationen mit Dateikonflikten blockieren oder es gäbe gar keine.
+#   - Hook nach jeder Transaktion (usr/bin/* installiert/entfernt): fehlende Links ergänzen
+#     (z. B. nach -R coreutils), Liste /var/lib/usrside-busybox/links.
+#   - rcyay -S/-U gibt pacman für genau diese Links --overwrite mit, damit ein Paket (coreutils,
+#     which …) seinen Pfad übernehmen kann; reines pacman: --overwrite "$(paste -sd, LISTE)".
+# Welche Namen BusyBox als Abhängigkeit erfüllt, steht in VirtualProvides (/etc/rcyay.conf).
+#   cd pkg/usrside-busybox && makepkg
+pkgname=usrside-busybox
+pkgver=1.36.1
+pkgrel=1
+pkgdesc='UsrsideOS: BusyBox applets as commands wherever no package provides the path'
+arch=(x86_64 x86_64_musl)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-or-later)
+depends=(busybox)
+makedepends=(busybox)
+install=usrside-busybox.install
+source=(usrside-busybox-links usrside-busybox.hook)
+sha256sums=(SKIP SKIP)
+
+pkgver() {
+	busybox 2>/dev/null | sed -n '1s/^BusyBox v\([0-9.]*\).*/\1/p'
+}
+
+package() {
+	local a
+	install -Dm755 usrside-busybox-links "$pkgdir/usr/lib/usrside-busybox/links"
+	install -Dm644 usrside-busybox.hook "$pkgdir/usr/share/libalpm/hooks/usrside-busybox.hook"
+	install -dm755 "$pkgdir/usr/lib/busybox/bin" "$pkgdir/var/lib/usrside-busybox"
+	for a in $(busybox --list); do
+		[ "$a" = busybox ] || ln -s /usr/bin/busybox "$pkgdir/usr/lib/busybox/bin/$a"
+	done
+}

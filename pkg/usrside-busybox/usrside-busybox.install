@@ -1,0 +1,10 @@
+post_install() {
+	/usr/lib/usrside-busybox/links
+	echo "usrside-busybox: $(wc -l < /var/lib/usrside-busybox/links) BusyBox-Befehle in /usr/bin"
+}
+post_upgrade() {
+	/usr/lib/usrside-busybox/links
+}
+pre_remove() {
+	/usr/lib/usrside-busybox/links --remove
+}

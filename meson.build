@@ -401,8 +401,9 @@ rcyay_bin = executable(
   'rcyay',
   rcyay_sources,
   include_directories : [include_directories('src/pacman'), includes, libaur_includes],
-  link_with : [libpacmanui, libaur, libalpm, libcommon],
-  dependencies : [libarchive, libcurl],
+  # libalpm statisch: rcyay läuft neben Arch-pacman (anderes libalpm.so) – M4 glibc
+  link_with : [libpacmanui, libaur, libalpm_a, libcommon],
+  dependencies : alpm_deps,
   install : true,
 )
 

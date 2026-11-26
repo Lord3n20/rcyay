@@ -355,3 +355,48 @@ int rc_vprov_main(const char *cmd)
 	}
 	return 0;
 }
+
+/* usrside-busybox: Links /usr/bin/APPLET -> busybox gehören keinem Paket. Damit ein Paket
+ * (coreutils, which …) den Pfad übernehmen kann, bekommt pacman bei -S/-U genau diese
+ * Pfade als --overwrite (Liste des Hooks in ROOT/var/lib/usrside-busybox/links). */
+void rc_busybox_overwrite(void)
+{
+	const char *root = alpm_option_get_root(R.handle);
+	char *path = NULL, *line = NULL, *arg = NULL;
+	size_t cap = 0, alen = 0;
+	FILE *f, *out;
+	ssize_t n;
+
+	if(!root || asprintf(&path, "%s%svar/lib/usrside-busybox/links", root,
+				root[strlen(root) - 1] == '/' ? "" : "/") < 0) {
+		return;
+	}
+	f = fopen(path, "r");
+	free(path);
+	if(!f) {
+		return;
+	}
+	if(!(out = open_memstream(&arg, &alen))) {
+		fclose(f);
+		return;
+	}
+	fputs("--overwrite=", out);
+	n = 0;
+	for(int first = 1; (n = getline(&line, &cap, f)) > 0; ) {
+		line[strcspn(line, "\n")] = '\0';
+		/* nur einfache Pfade usr/bin/NAME (keine Muster) */
+		if(strncmp(line, "usr/bin/", 8) != 0 || !line[8] || strpbrk(line + 8, "/*?[,\\")) {
+			continue;
+		}
+		fprintf(out, "%s%s", first ? "" : ",", line);
+		first = 0;
+	}
+	fclose(out);
+	fclose(f);
+	free(line);
+	if(arg && strcmp(arg, "--overwrite=") != 0) {
+		R.tokens = alpm_list_add(R.tokens, strdup(arg));
+		R.trans = alpm_list_add(R.trans, strdup(arg));
+	}
+	free(arg);
+}

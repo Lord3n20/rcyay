@@ -1,0 +1,19 @@
+# UsrsideOS: Metapaket der Grundinstallation (statt Arch-„base“), je Variante über
+# die Architektur: x86_64 = glibc (Arch-Binärpakete), x86_64_musl = musl (Repo usrside-musl).
+# Kernwerkzeuge kommen aus BusyBox (usrside-busybox), bash nur für makepkg.
+# Kernel (usrkrnl) und Init (runit/s6/BusyBox init) wählt der Installer dazu.
+#   cd pkg/usrside-base && makepkg            (musl: CARCH=x86_64_musl)
+pkgname=usrside-base
+pkgver=2026.11.26
+pkgrel=1
+pkgdesc='UsrsideOS: minimal base system (BusyBox userland, rcyay)'
+arch=(x86_64 x86_64_musl)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-or-later)
+depends=(filesystem bash busybox usrside-busybox rcyay usrside-init ca-certificates)
+depends_x86_64=(glibc pacman archlinux-keyring pacman-mirrorlist)
+depends_x86_64_musl=(musl pacman)
+
+package() {
+	:
+}

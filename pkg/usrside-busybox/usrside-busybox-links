@@ -1,0 +1,25 @@
+#!/bin/sh
+# usrside-busybox: /usr/bin/APPLET -> busybox für freie Pfade anlegen (alpm-Hook, Installskript)
+#   links           fehlende Links ergänzen, Liste /var/lib/usrside-busybox/links neu schreiben
+#   links --remove  alle eigenen Links entfernen (vor dem Entfernen des Pakets)
+# Nur busybox-eigene Applets; nie etwas überschreiben, was nicht unser Link ist.
+L=/var/lib/usrside-busybox/links
+mkdir -p /var/lib/usrside-busybox
+ours() { [ -L "/$1" ] && [ "$(readlink "/$1")" = busybox ]; }
+if [ "${1:-}" = --remove ]; then
+	[ -f "$L" ] && while read -r p; do ours "$p" && rm -f "/$p"; done < "$L"
+	rm -f "$L"
+	exit 0
+fi
+[ -x /usr/bin/busybox ] || exit 0
+: > "$L.neu"
+for a in $(/usr/bin/busybox --list); do
+	case "$a" in busybox|*/*|'') continue;; esac
+	p=usr/bin/$a
+	if ours "$p"; then
+		echo "$p" >> "$L.neu"
+	elif [ ! -e "/$p" ] && [ ! -L "/$p" ]; then
+		ln -s busybox "/$p" && echo "$p" >> "$L.neu"
+	fi
+done
+mv -f "$L.neu" "$L"

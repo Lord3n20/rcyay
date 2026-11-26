@@ -1,0 +1,78 @@
+#!/bin/bash
+# Bau der PKGBUILDs aus pkg/ + Install-Test in einem frischen Arch-chroot (rcyay-e1c, 26.11.2026).
+# NUR in einer Wegwerf-VM als root:  install-chroot [NUTZER] [ZIEL] [RCYAY]
+#   NUTZER baut mit makepkg (Standard bau), ZIEL = chroot-Ordner (Standard /root/usrside-ch, wird neu angelegt)
+# Ausgabe TAP, Exit 0 = grün. Pakete landen in /root/aus/usrside-repo (Repo „usrside“).
+set -u
+NUTZER=${1:-bau}
+CH=${2:-/root/usrside-ch}
+RC=${3:-/home/bau/b/rcyay}   # rcyay des Wirts für Schritte mit --root (Repo usrside + Cache des Wirts)
+HIER=$(cd "$(dirname "$0")" && pwd)
+SRC=$(cd "$HIER/../../.." && pwd)
+[ "$(id -u)" = 0 ] || { echo "als root starten (Wegwerf-VM)"; exit 2; }
+export LANG=C LC_ALL=C
+N=0 FAIL=0
+W=$(mktemp -d /tmp/usrside-pkg.XXXXXX); chmod 755 "$W"
+ok()  { N=$((N+1)); echo "ok $N - $1"; }
+nok() { N=$((N+1)); FAIL=$((FAIL+1)); echo "not ok $N - $1"; [ -f "$W/out" ] && sed 's/^/#   /' "$W/out" | tail -15; }
+check() { local d=$1; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else nok "$d"; fi; }
+inch() { chroot "$CH" /usr/bin/env -i PATH=/usr/bin LANG=C "$@"; }
+
+# ---------- Bau ----------
+pacman -Q busybox >/dev/null 2>&1 || pacman -S --noconfirm --needed busybox >/dev/null 2>&1
+pacman -Fy >/dev/null 2>&1
+REPO=/root/aus/usrside-repo; rm -rf "$REPO"
+rm -f /var/cache/pacman/pkg/rcyay-[0-9]* /var/cache/pacman/pkg/usrside-*   # alte Bauten gleicher Version
+ mkdir -p "$REPO"; chmod 777 "$REPO"
+cp -r "$SRC/pkg" "$W/pkg"; chown -R "$NUTZER": "$W/pkg"
+for p in rcyay usrside-init usrside-busybox usrside-base; do
+  runuser -u "$NUTZER" -- bash -lc "cd '$W/pkg/$p' && RCYAY_SRC='$SRC' PKGDEST='$REPO' makepkg -f -d --noconfirm" >"$W/out" 2>&1
+  check "makepkg $p" ls "$REPO"/$p-[0-9]*.pkg.tar.zst
+done
+grep -h "^BusyBox:" "$W/out" | sed 's/^/# /'
+repo-add -q "$REPO/usrside.db.tar.gz" "$REPO"/*.pkg.tar.zst >/dev/null 2>&1
+check "repo-add usrside" test -f "$REPO/usrside.db"
+check "rcyay-Paket: nur eigene Dateien (kein pacman/libalpm)" bash -c "! tar -tf $REPO/rcyay-[0-9]*.pkg.tar.zst | grep -Eq '^usr/(bin/(pacman|makepkg)|lib/libalpm)'"
+check "rcyay ohne libalpm.so" bash -c "tar -xOf $REPO/rcyay-[0-9]*.pkg.tar.zst usr/bin/rcyay > $W/rcyay.bin && ! objdump -p $W/rcyay.bin | grep -q 'NEEDED.*libalpm'"
+check "usrside-busybox: keine festen /usr/bin-Dateien (nur Hook-Links)" bash -c "! tar -tf $REPO/usrside-busybox-*.pkg.tar.zst | grep -q '^usr/bin/.'"
+
+# ---------- frisches chroot ----------
+rm -rf "$CH"; mkdir -p "$CH/var/lib/pacman"
+{ sed '/^\[core\]/,$d' /etc/pacman.conf
+  printf '[usrside]\nSigLevel = Never\nServer = file://%s\n\n' "$REPO"
+  sed -n '/^\[core\]/,$p' /etc/pacman.conf; } > "$W/pacman.conf"
+pacman --config "$W/pacman.conf" -r "$CH" -Sy --noconfirm usrside-base >"$W/out" 2>&1; r=$?
+check "pacman -r: usrside-base ins leere chroot (ohne Dateikonflikte)" [ $r = 0 ]
+pacman -r "$CH" -Qq > "$W/liste" 2>/dev/null
+echo "# chroot: $(wc -l < "$W/liste") Pakete, $(du -sh "$CH" | cut -f1); GNU-Werkzeuge: $(grep -xE 'coreutils|findutils|util-linux|grep|sed|gawk|procps-ng|tar' "$W/liste" | tr '\n' ' ')"
+check "kein Arch-base" bash -c "! grep -qx base $W/liste"
+check "rcyay -V im chroot" bash -c "chroot $CH /usr/bin/rcyay -V | grep -q '^rcyay v'"
+check "/etc/rcyay.conf von usrside-init" bash -c "pacman -r $CH -Qqo $CH/etc/rcyay.conf | grep -qx usrside-init"
+check "Hooks installiert" test -f "$CH/usr/share/libalpm/hooks/rcyay-dienste.hook"
+check "Overlay installiert" test -f "$CH/usr/share/rcyay/overlay/nur-glibc.txt"
+check "sh/ls/cp/mkdir laufen im chroot" inch sh -c 'mkdir -p /tmp/x && echo hi > /tmp/x/a && cp /tmp/x/a /tmp/x/b && ls /tmp/x | grep -q b && rm -r /tmp/x'
+check "pacman -Qkk usrside-busybox" pacman -r "$CH" -Qkk usrside-busybox
+L="$CH/var/lib/usrside-busybox/links"
+check "Hook: Linkliste angelegt" test -s "$L"
+echo "# usrside-busybox: $(wc -l < "$L" 2>/dev/null) BusyBox-Befehle in /usr/bin (Rest gehört Paketen)"
+check "Links zeigen auf busybox und gehören keinem Paket" bash -c "p=\$(head -1 $L); [ \"\$(readlink $CH/\$p)\" = busybox ] && ! pacman -r $CH -Qo $CH/\$p"
+check "keine Links über Paketdateien (ls bleibt coreutils)" bash -c "pacman -r $CH -Qqo $CH/usr/bin/ls | grep -qx coreutils && [ ! -L $CH/usr/bin/ls ]"
+check "which (BusyBox) läuft im chroot" bash -c "grep -qx usr/bin/which $L && chroot $CH /usr/bin/which sh | grep -q /usr/bin/sh"
+pacman --config "$W/pacman.conf" -r "$CH" -S --noconfirm which >"$W/out" 2>&1; r=$?
+check "reines pacman -S which: Konflikt mit BusyBox-Link (erwartet)" bash -c "[ $r != 0 ] && grep -q 'exists in filesystem' $W/out"
+"$RC" --config "$W/pacman.conf" --root "$CH" --rcyayconf "$CH/etc/rcyay.conf" -S --noconfirm which >"$W/out" 2>&1; r=$?
+check "rcyay -S which: übernimmt den Pfad (--overwrite nur für BusyBox-Links)" bash -c "[ $r = 0 ] && pacman -r $CH -Qqo $CH/usr/bin/which | grep -qx which"
+check "Hook: usr/bin/which nicht mehr in der Linkliste" bash -c "! grep -qx usr/bin/which $L"
+pacman --config "$W/pacman.conf" -r "$CH" -R --noconfirm which >"$W/out" 2>&1
+check "pacman -R which: Hook legt den BusyBox-Link wieder an" bash -c "grep -qx usr/bin/which $L && [ \"\$(readlink $CH/usr/bin/which)\" = busybox ]"
+# VirtualProvides: which von BusyBox erklärt -> Pakete mit depends=(which) ohne GNU which
+printf 'VirtualProvides = which\n' >> "$CH/etc/rcyay.conf"
+"$RC" --config "$W/pacman.conf" --root "$CH" --rcyayconf "$CH/etc/rcyay.conf" --provides apply >"$W/out" 2>&1; r=$?
+check "rcyay --provides apply: usrside-provides im chroot" bash -c "[ $r = 0 ] && pacman -r $CH -Qi usrside-provides | grep -q '^Provides *: which'"
+check "pacman -T which im chroot erfüllt" pacman -r "$CH" -T which
+pacman -r "$CH" -Rdd --noconfirm usrside-busybox >"$W/out" 2>&1
+check "Entfernen von usrside-busybox räumt alle Links weg" bash -c "[ ! -e $L ] && ! find $CH/usr/bin -maxdepth 1 -lname busybox | grep -q ."
+
+echo "1..$N"
+[ $FAIL = 0 ] && { echo "# alle $N Tests grün"; rm -rf "$W"; exit 0; }
+echo "# $FAIL von $N fehlgeschlagen (Arbeitsordner $W)"; exit 1

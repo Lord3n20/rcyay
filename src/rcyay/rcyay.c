@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
 			rc_alpm_release();
 			return 1;
 		}
+		rc_busybox_overwrite();
 	}
 
 	/* reine pacman-Operationen unverändert an pacman */
@@ -161,6 +162,7 @@ int main(int argc, char *argv[])
 
 	switch(R.op) {
 		case 'S':
+			rc_busybox_overwrite();
 			ret = rc_op_sync();
 			break;
 		case 'G':
