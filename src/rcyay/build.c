@@ -387,7 +387,7 @@ static int build_job(job_t *j, alpm_list_t **files)
 		free(out);
 		out = NULL;
 		if(!si) {
-			rc_err("%s: neue Version nicht bestimmbar: %s\n", j->b->pkgbase, err ? err : "makepkg");
+			rc_err(_("%s: cannot determine the new version: %s\n"), j->b->pkgbase, err ? err : "makepkg");
 			free(err);
 			return -1;
 		}
@@ -669,6 +669,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	aur_resolver_t res = { 0 };
 	aur_plan_t *plan = NULL;
 	alpm_list_t *all = NULL, *before = NULL, *installed_by_us = NULL, *explicit = NULL;
+	alpm_list_t *deps_by_us = NULL;  /* Laufzeit-Abh., die dieser Lauf installiert hat */
 	char *d1 = NULL, *d2 = NULL;
 	int ret = 1;
 
@@ -704,6 +705,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	if(rc_build_user(&build_uid, &build_gid, &build_home) != 0) {
 		goto done;
 	}
+	rc_build_path(build_uid, build_gid, build_home);
 	if(geteuid() == 0) {
 		/* Bau-Nutzer muss im Bauordner schreiben, Snapshots bleiben root */
 		if(chown(R.builddir, 0, 0) != 0) {
@@ -790,6 +792,11 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		for(alpm_list_t *i = plan->repo_make; i; i = i->next) {
 			installed_by_us = alpm_list_add(installed_by_us, strdup(i->data));
 		}
+		for(alpm_list_t *i = plan->repo; i; i = i->next) {
+			if(!alpm_list_find_str(plan->repo_make, i->data)) {
+				deps_by_us = alpm_list_add(deps_by_us, strdup(i->data));
+			}
+		}
 	}
 
 	ret = 0;
@@ -823,6 +830,9 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 			}
 			if(!alpm_list_find_str(explicit, k->data) && !R.asdeps && !R.asexplicit) {
 				asdeps = alpm_list_add(asdeps, strdup(k->data));
+				if(!aur_plan_is_makeonly(plan, b, k->data)) {
+					deps_by_us = alpm_list_add(deps_by_us, strdup(k->data));
+				}
 			}
 			if(aur_plan_is_makeonly(plan, b, k->data)) {
 				installed_by_us = alpm_list_add(installed_by_us, strdup(k->data));
@@ -843,6 +853,22 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		}
 	}
 
+	/* Bau gescheitert: Abhängigkeiten, die nur für die nicht installierten
+	 * Ziele geholt wurden, wären jetzt Waisen. -Rsu entfernt nur, was nichts
+	 * anderes mehr braucht. */
+	if(ret != 0 && deps_by_us) {
+		if(R.removemake) {
+			for(alpm_list_t *i = deps_by_us; i; i = i->next) {
+				installed_by_us = alpm_list_add(installed_by_us, strdup(i->data));
+			}
+		} else {
+			rc_warn(_("build failed - dependencies installed for it remain (remove with rcyay -Yc):\n"));
+			for(alpm_list_t *i = deps_by_us; i; i = i->next) {
+				printf("    %s\n", (char *)i->data);
+			}
+		}
+	}
+
 	if(installed_by_us && R.removemake) {
 		alpm_list_t *pre = rc_strlist("-R", "-s", "-u", "--noconfirm", NULL);
 		rc_msg(_("Removing make dependencies...\n"));
@@ -858,6 +884,7 @@ done:
 	FREELIST(all);
 	FREELIST(before);
 	FREELIST(installed_by_us);
+	FREELIST(deps_by_us);
 	FREELIST(explicit);
 	free(d1);
 	free(d2);

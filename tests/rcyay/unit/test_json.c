@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <locale.h>
 #include "check.h"
 #include "json.h"
 
@@ -48,6 +49,18 @@ int main(void)
 	j = P("42");
 	CHECK(j && aur_json_num(j, 0) == 42);
 	aur_json_free(j);
+
+	/* Dezimalkomma-Locale darf das Parsen nicht stören (AUR: "Popularity": 3.47) */
+	if(setlocale(LC_ALL, "de_DE.UTF-8") && localeconv()->decimal_point[0] == ',') {
+		j = P("{\"Popularity\": 3.47, \"e\": 1.5e-1}");
+		CHECK(j != NULL);
+		CHECK(j && aur_json_get_num(j, "Popularity", 0) > 3.469 && aur_json_get_num(j, "Popularity", 0) < 3.471);
+		CHECK(j && aur_json_get_num(j, "e", 0) > 0.149 && aur_json_get_num(j, "e", 0) < 0.151);
+		aur_json_free(j);
+		setlocale(LC_ALL, "C");
+	} else {
+		printf("ok %d - # SKIP de_DE.UTF-8 nicht vorhanden\n", ++check_n);
+	}
 
 	CHECK(fails(""));
 	CHECK(fails("{"));

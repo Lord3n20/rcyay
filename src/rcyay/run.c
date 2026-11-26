@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <limits.h>
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -215,6 +216,17 @@ int rc_have_program(const char *name)
 /* Führt argv aus (PATH-Suche), optional in dir, als uid/gid (uid (uid_t)-1 =
  * unverändert), stdout optional in *out. Rückgabe: Exit-Code, 128+Signal
  * oder -1. */
+static int run_quiet;
+
+int rc_run_quiet(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out)
+{
+	int r;
+	run_quiet = 1;
+	r = rc_run(argv, dir, uid, gid, home, out);
+	run_quiet = 0;
+	return r;
+}
+
 int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out)
 {
 	int pfd[2] = { -1, -1 };
@@ -246,6 +258,13 @@ int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, cons
 	if(pid == 0) {
 		signal(SIGINT, SIG_DFL);
 		signal(SIGQUIT, SIG_DFL);
+		if(run_quiet) {
+			int nul = open("/dev/null", O_WRONLY);
+			if(nul >= 0) {
+				dup2(nul, STDERR_FILENO);
+				close(nul);
+			}
+		}
 		if(out) {
 			close(pfd[0]);
 			dup2(pfd[1], STDOUT_FILENO);
@@ -481,4 +500,80 @@ int rc_rm_rf(const char *path)
 		return errno == ENOENT ? 0 : -1;
 	}
 	return nftw(path, rm_cb, 32, FTW_DEPTH | FTW_PHYS);
+}
+
+/* PATH-Einträge aus add an *path anhängen, die dort noch fehlen */
+static void path_merge(char **path, const char *add)
+{
+	const char *a = add;
+	while(a && *a) {
+		const char *e = strchr(a, ':');
+		size_t n = e ? (size_t)(e - a) : strlen(a);
+		if(n > 0 && n < PATH_MAX) {
+			char comp[PATH_MAX];
+			const char *p = *path;
+			int found = 0;
+			memcpy(comp, a, n);
+			comp[n] = '\0';
+			while(p && *p) {
+				const char *pe = strchr(p, ':');
+				size_t pn = pe ? (size_t)(pe - p) : strlen(p);
+				if(pn == n && strncmp(p, comp, n) == 0) {
+					found = 1;
+					break;
+				}
+				p = pe ? pe + 1 : NULL;
+			}
+			if(!found) {
+				char *np = NULL;
+				if(asprintf(&np, "%s%s%s", *path && **path ? *path : "",
+							*path && **path ? ":" : "", comp) >= 0) {
+					free(*path);
+					*path = np;
+				}
+			}
+		}
+		a = e ? e + 1 : NULL;
+	}
+}
+
+/* Bauumgebung: PATH wie in einer Login-Shell des Bau-Nutzers ergänzen.
+ * sudo (secure_path) und runuser liefern nur einen knappen PATH; Arch setzt
+ * z. B. /usr/bin/core_perl (pod2man) erst über /etc/profile.d/perlbin.sh.
+ * Vorhandene Einträge des Aufrufers bleiben vorn. */
+void rc_build_path(uid_t uid, gid_t gid, const char *home)
+{
+	static int done;
+	char *path, *login = NULL;
+	const char *argv[] = { "env", "-i", NULL, "/bin/sh", "-lc", "printf %s \"$PATH\"", NULL };
+	char *homeenv = NULL;
+
+	if(done) {
+		return;
+	}
+	done = 1;
+	path = strdup(getenv("PATH") ? getenv("PATH") : "");
+	if(!path) {
+		return;
+	}
+	if(asprintf(&homeenv, "HOME=%s", home ? home : "/") >= 0) {
+		argv[2] = homeenv;
+		if(access("/bin/sh", X_OK) == 0 &&
+				rc_run_quiet(argv, "/", uid, gid, home, &login) == 0 && login) {
+			path_merge(&path, login);
+		}
+	}
+	free(homeenv);
+	free(login);
+	/* Rückfall ohne /etc/profile: Arch-Perl-Pfade, sofern vorhanden */
+	{
+		const char *perl[] = { "/usr/bin/site_perl", "/usr/bin/vendor_perl", "/usr/bin/core_perl", NULL };
+		for(int i = 0; perl[i]; i++) {
+			if(access(perl[i], X_OK) == 0) {
+				path_merge(&path, perl[i]);
+			}
+		}
+	}
+	setenv("PATH", path, 1);
+	free(path);
 }

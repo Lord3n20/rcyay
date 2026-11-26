@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <locale.h>
 
 #include "json.h"
 
@@ -298,7 +299,19 @@ static aur_json_t *parse_number(parser_t *ps)
 		ps->err = "out of memory";
 		return NULL;
 	}
-	node->number = strtod(buf, &endp);
+	/* JSON-Zahlen haben immer einen Punkt: nie vom Locale abhängig parsen
+	 * (de_DE: Dezimalkomma, strtod("3.47") scheitert sonst). */
+	{
+		static locale_t cloc;
+		if(!cloc) {
+			cloc = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
+		}
+		if(cloc) {
+			node->number = strtod_l(buf, &endp, cloc);
+		} else {
+			node->number = strtod(buf, &endp);
+		}
+	}
 	if(*endp != '\0') {
 		ps->err = "invalid number";
 		free(node);

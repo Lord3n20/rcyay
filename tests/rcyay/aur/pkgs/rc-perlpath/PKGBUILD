@@ -1,0 +1,8 @@
+pkgname=rc-perlpath
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="rcyay Testpaket: braucht pod2man (core_perl) im PATH"
+build() { command -v pod2man > "$srcdir/pfad"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; cp "$srcdir/pfad" "$pkgdir/usr/share/rcyay-test/$pkgname"; }

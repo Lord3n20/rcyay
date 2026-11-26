@@ -1,0 +1,7 @@
+pkgname=rc-orphan-dep
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="AUR-Laufzeitabhaengigkeit von rc-orphan"
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

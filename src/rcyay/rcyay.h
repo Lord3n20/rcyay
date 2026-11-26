@@ -105,6 +105,8 @@ int rc_alpm_init(void);
 void rc_alpm_release(void);
 int rc_alpm_reload(void);
 int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out);
+int rc_run_quiet(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out);
+void rc_build_path(uid_t uid, gid_t gid, const char *home);
 int rc_pacman(alpm_list_t *args, int root);
 int rc_pacman_inproc(alpm_list_t *tokens, alpm_list_t *targets);
 int rc_build_user(uid_t *uid, gid_t *gid, char **home);

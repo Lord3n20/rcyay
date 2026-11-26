@@ -831,3 +831,13 @@ msgstr "Problem beim Importieren der Schlüssel\n"
 #: src/rcyay/extra.c
 msgid "    --pgpfetch / --nopgpfetch  import missing validpgpkeys with gpg (default: yes)\n"
 msgstr "    --pgpfetch / --nopgpfetch  fehlende validpgpkeys mit gpg importieren (Standard: ja)\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "%s: cannot determine the new version: %s\n"
+msgstr "%s: neue Version nicht bestimmbar: %s\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "build failed - dependencies installed for it remain (remove with rcyay -Yc):\n"
+msgstr "Bau gescheitert – dafür installierte Abhängigkeiten bleiben (entfernen mit rcyay -Yc):\n"

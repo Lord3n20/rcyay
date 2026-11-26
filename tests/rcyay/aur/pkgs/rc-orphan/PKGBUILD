@@ -1,0 +1,10 @@
+pkgname=rc-orphan
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="rcyay Testpaket, dessen Bau scheitert (Waisen-Test)"
+depends=(rc-repodep rc-orphan-dep)
+makedepends=(rc-repomake)
+build() { echo "absichtlicher Baufehler"; false; }
+package() { :; }

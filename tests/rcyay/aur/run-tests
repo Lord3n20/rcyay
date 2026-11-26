@@ -205,6 +205,36 @@ yes y | R -S rc-pgp; r=$?
 check "mit Rückfrage (ja) importiert und gebaut" bash -c "[ $r = 0 ] && grep -q 'Import?' '$W/out'"
 runuser -u rcyay-bau -- env HOME="$BAUHOME" gpgconf --kill all 2>/dev/null
 
+# ---------- gescheiterter Bau: keine Waisen ----------
+aufraeumen
+R -S --noconfirm rc-orphan; r=$?
+check "rc-orphan: Bau scheitert" [ $r != 0 ]
+check "Repo-Laufzeitabh. rc-repodep wieder entfernt" notinst rc-repodep
+check "AUR-Laufzeitabh. rc-orphan-dep wieder entfernt" notinst rc-orphan-dep
+check "Repo-Bauabh. rc-repomake wieder entfernt" notinst rc-repomake
+R -S --noconfirm --noremovemake rc-orphan; r=$?
+check "--noremovemake: Abh. bleiben und werden genannt" bash -c "[ $r != 0 ] && grep -q 'remain' '$W/out' && pacman -Q rc-repodep >/dev/null"
+aufraeumen
+
+# ---------- PATH der Bauumgebung (sudo secure_path / runuser) ----------
+env PATH=/usr/local/sbin:/usr/local/bin:/usr/bin "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/rcyay.conf" -S --noconfirm rc-perlpath >"$W/out" 2>&1; r=$?
+check "knapper PATH: pod2man (core_perl) beim Bau gefunden" bash -c "[ $r = 0 ] && grep -q core_perl/pod2man /usr/share/rcyay-test/rc-perlpath"
+
+# ---------- deutsches Locale (Dezimalkomma) ----------
+if locale -a 2>/dev/null | grep -qi '^de_DE.utf-\?8$'; then
+  LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 R -Ss rc-hello; r=$?
+  check "de_DE: -Ss liest AUR-JSON (Popularity)" bash -c "[ $r = 0 ] && grep -q '^aur/rc-hello' '$W/out'"
+  LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 R -Si rc-hello; r=$?
+  check "de_DE: -Si" bash -c "[ $r = 0 ] && grep -q 'rc-hello' '$W/out' && ! grep -q JSON '$W/out'"
+  LANG=de_DE.UTF-8 LC_ALL=de_DE.UTF-8 R -S --noconfirm rc-orphan-dep; r=$?
+  check "de_DE: -S baut und installiert" bash -c "[ $r = 0 ] && pacman -Q rc-orphan-dep >/dev/null"
+  if [ -f /usr/share/locale/de/LC_MESSAGES/rcyay.mo ]; then
+    check "de_DE: Meldungen deutsch" grep -q "Abhängigkeiten" "$W/out"
+  else N=$((N+1)); echo "ok $N - # SKIP de_DE Meldungen: rcyay.mo nicht installiert"; fi
+else
+  for t in "-Ss" "-Si" "-S" "Meldungen"; do N=$((N+1)); echo "ok $N - # SKIP de_DE $t: Locale fehlt (locale-gen)"; done
+fi
+
 # ---------- als normaler Nutzer (sudo) ----------
 aufraeumen
 RU -S --noconfirm rc-chain-a; r=$?
