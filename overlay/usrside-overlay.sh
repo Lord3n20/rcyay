@@ -99,11 +99,11 @@ _usrside_map() {
 usrside_abschluss() {
 	local f a
 	for a in depends makedepends checkdepends optdepends; do
-		declare -p "$a" &>/dev/null && _usrside_map "$a"
+		if declare -p "$a" &>/dev/null; then _usrside_map "$a"; fi
 	done
 	for f in $(declare -F | awk '{print $3}' | grep -E '^package(_.*)?$'); do
 		eval "_usrside_orig_$f() $(declare -f "$f" | tail -n +2)"
-		eval "$f() { _usrside_orig_$f \"\$@\"; local _a; for _a in depends optdepends; do declare -p \"\$_a\" &>/dev/null && _usrside_map \"\$_a\"; done; }"
+		eval "$f() { _usrside_orig_$f \"\$@\"; local _a; for _a in depends optdepends; do if declare -p \"\$_a\" &>/dev/null; then _usrside_map \"\$_a\"; fi; done; }"
 	done
 	if ((${#_usrside_link_von[@]})) || [[ -n ${_usrside_patchliste:-} ]]; then
 		if declare -F prepare >/dev/null; then
