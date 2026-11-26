@@ -88,6 +88,7 @@ Die Dienstdateien sind bewusst statisch; sobald `rcyay-dienste` (M2) sie aus sys
 | `linux-api-headers` ohne `headers_install` | braucht rsync; stattdessen `make headers` und Kopieren (wie LFS). |
 | gnupg fehlt noch | gpgme ist da, aber ohne gpg prüft rcyay keine Signaturen: Repo `usrside-musl` hat `SigLevel = Never`, PKGBUILD-Signaturen werden mit `--skippgpcheck` übergangen (die sha256/b2-Prüfsummen gelten weiter). |
 | Python ohne `_ssl` im Vorbau | Python 3.14.10 nutzt noch `TLSv1_method`, das OpenSSL 4 nicht mehr hat; meson braucht kein ssl. |
+| gcc: zwei awk-Stellen umgeschrieben | gawk 5.4.1 auf musl: ein Feldelement, das nur in `arr[x] == ""` angefasst wurde, wird beim Anhängen zu `"0"` (`e[k] == ""; e[k] = e[k] "a"` → `0a`; gleiches gawk auf glibc → `a`; kein Optimierungs-/PMA-Effekt). gcc's `opt-gather.awk`/`optc-gen.awk` treffen genau das; `pakete/gcc` prüft dort mit `j > 1` bzw. `in`. BusyBox awk ist keine Alternative (frisst `\\+` im gsub-Ersatz → `CL_CXX` fehlt). Ursache in gawk/musl klärt M5. |
 | Kernel nicht als Paket | usrkrnl ist absichtlich ein maschinenbezogener Bau (`usrkrnl/setup`), kein generisches Paket; das Abbild bekommt ihn direkt. |
 | HTTPS mit BusyBox-wget | BusyBox-TLS prüft keine Zertifikate; für Downloads mit Prüfung nimmt rcyay/makepkg curl. |
 

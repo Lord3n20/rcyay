@@ -15,14 +15,24 @@ sha256sums=('e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e')
 prepare() {
 	cd "gcc-$pkgver"
 	sed -i '/m64=/s/lib64/lib/' gcc/config/i386/t-linux64
+	# opt-gather.awk liest beim Einfügesortieren ARRAY[0] (j bis 1): gawk auf musl wertet "" > Text
+	# als wahr und verliert den ersten Eintrag ("###Driver") → kaputte Optionstabelle. Grenze j > 1.
+	sed -i 's/for (j = i; ARRAY\[j-1\] > ARRAY\[j\]; --j)/for (j = i; j > 1 \&\& ARRAY[j-1] > ARRAY[j]; --j)/' gcc/opt-gather.awk
+	grep -q 'j > 1 && ARRAY' gcc/opt-gather.awk
+	# Gleiches Muster in optc-gen.awk: nach `arr[x] == ""` wird das neue Element bei gawk-auf-musl
+	# zu "0" ("0Wabsolute-value does not have a Var() flag") – deshalb per `in` prüfen.
+	sed -i -e 's/if (enables\[enabledby_name\] == "")/if (!(enabledby_name in enables))/' \
+		-e 's/if (enables\[lang_name,enabledby_array\[k\]\] == "")/if (!((lang_name,enabledby_array[k]) in enables))/' \
+		gcc/optc-gen.awk
+	[[ $(grep -c ' in enables))' gcc/optc-gen.awk) == 2 ]]
 	rm -rf "$srcdir/gcc-build"
 	mkdir -p "$srcdir/gcc-build"
 }
 
 build() {
 	cd "$srcdir/gcc-build"
-	# Bau-Flags von makepkg gelten nicht für die Ziel-Bibliotheken
-	CFLAGS=${CFLAGS/-Werror=format-security/}
+	# schlichte Flags wie in stage1: -Wp,-D_GLIBCXX_ASSERTIONS u. ä. brechen libstdc++ (c++98-Teil)
+	export CFLAGS="-O2 -pipe -fstack-clash-protection" CXXFLAGS="-O2 -pipe -fstack-clash-protection"
 	"$srcdir/gcc-$pkgver/configure" --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib \
 		--mandir=/usr/share/man --infodir=/usr/share/info \
 		--build="$CHOST" --host="$CHOST" --target="$CHOST" \
