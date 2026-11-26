@@ -1,0 +1,499 @@
+#!/bin/bash
+# stage1: kreuzübersetztes Sysroot $WURZEL mit allem, was stage2 (chroot + makepkg + rcyay) braucht:
+#   Linux-Header, musl, zlib bzip2 xz zstd openssl CA-Zertifikate libarchive curl
+#   libgpg-error libassuan gpgme busybox bash make patch fakeroot pkgconf
+#   rcyay/pacman/makepkg (aus ~/rcyay main) und die native Toolchain (binutils, gcc).
+#   VARIANTE=musl bootstrap/stage1   (setzt stage0 voraus)
+# Umgebung: RCYAY_QUELLE (git-Baum von rcyay, Standard /root/rcyay bzw. ~/rcyay), RCYAY_REF (Standard main)
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+brauche pkg-config meson ninja git perl readelf
+[[ -x $TC/bin/$ZIEL-gcc ]] || abbruch "keine Toolchain $TC/bin/$ZIEL-gcc – zuerst bootstrap/stage0"
+[[ $VARIANTE == musl ]] || abbruch "stage1 für glibc folgt mit M4"
+
+if [[ -z ${RCYAY_QUELLE:-} ]]; then
+	for d in /root/rcyay "$HOME/rcyay" "$BOOTSTRAP/.."; do
+		[[ -e $d/meson.build ]] && { RCYAY_QUELLE=$(cd "$d" && pwd); break; }
+	done
+fi
+RCYAY_REF=${RCYAY_REF:-main}
+BAUWIRT=$(gcc -dumpmachine)
+
+export PATH=$TC/bin:$PATH
+export CC="$ZIEL-gcc --sysroot=$WURZEL" CXX="$ZIEL-g++ --sysroot=$WURZEL"
+export CPP="$CC -E"
+export AR=$ZIEL-ar RANLIB=$ZIEL-ranlib STRIP=$ZIEL-strip NM=$ZIEL-nm LD=$ZIEL-ld
+export OBJDUMP=$ZIEL-objdump OBJCOPY=$ZIEL-objcopy READELF=$ZIEL-readelf
+export CFLAGS="-O2 -pipe -fstack-clash-protection" CXXFLAGS="-O2 -pipe -fstack-clash-protection"
+export LDFLAGS="-Wl,-O1 -Wl,--sort-common -Wl,--as-needed -Wl,-z,relro -Wl,-z,now"
+export CC_FOR_BUILD=gcc CXX_FOR_BUILD=g++ BUILD_CC=gcc HOSTCC=gcc
+export PKG_CONFIG=pkg-config PKG_CONFIG_SYSROOT_DIR=$WURZEL
+export PKG_CONFIG_LIBDIR=$WURZEL/usr/lib/pkgconfig:$WURZEL/usr/share/pkgconfig
+unset PKG_CONFIG_PATH CPPFLAGS
+WERKZEUG=$BAU/werkzeug
+export PATH=$WERKZEUG:$PATH
+
+conf=(--host="$ZIEL" --build="$BAUWIRT" --prefix=/usr --sysconfdir=/etc --localstatedir=/var
+	--libdir=/usr/lib --libexecdir=/usr/lib --sbindir=/usr/bin --mandir=/usr/share/man
+	--disable-static --disable-nls)
+
+# autotools-Paket: NAME [configure-Optionen …]
+autotools() {
+	local name=$1 src
+	shift
+	src=$(auspacken "$name")
+	flicken "$src" "$name"
+	cd "$src"
+	./configure "${conf[@]}" "$@"
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install
+	aufraeumen "$src"
+}
+
+aufraeumen() {
+	cd "$BAU"
+	rm -rf "$1"
+	find "$WURZEL/usr/lib" -name '*.la' -delete
+	rm -rf "$WURZEL/usr/share/info/dir"
+}
+
+b_wurzel_anlegen() {
+	mkdir -p "$WURZEL"
+	cd "$WURZEL"
+	mkdir -p usr/{bin,lib,include,share/{man,doc,licenses}} etc/{ssl/certs,profile.d} \
+		var/{cache,lib,log,tmp,spool} boot dev home mnt opt proc root run srv sys tmp
+	ln -sfn usr/bin bin
+	ln -sfn usr/bin sbin
+	ln -sfn usr/lib lib
+	ln -sfn usr/lib lib64
+	ln -sfn bin usr/sbin
+	ln -sfn lib usr/lib64
+	ln -sfn ../run var/run
+	chmod 1777 tmp var/tmp
+	chmod 0750 root
+	mkdir -p "$WERKZEUG"
+	# gpgrt-config des Sysroots, --libdir immer im Sysroot (-I/-L ergänzt PKG_CONFIG_SYSROOT_DIR)
+	cat >"$WERKZEUG/gpgrt-config" <<-EOF
+		#!/bin/bash
+		a=()
+		for x; do
+		  case \$x in --libdir=$WURZEL*) ;; --libdir=*) x=--libdir=$WURZEL\${x#--libdir=} ;; esac
+		  a+=("\$x")
+		done
+		exec sh "$WURZEL/usr/bin/gpgrt-config" "\${a[@]}"
+	EOF
+	chmod +x "$WERKZEUG/gpgrt-config"
+}
+
+b_header() {
+	local src
+	src=$(auspacken linux)
+	make -C "$src" ARCH=x86_64 mrproper
+	make -C "$src" ARCH=x86_64 INSTALL_HDR_PATH="$BAU/hdr" headers_install
+	cp -a "$BAU/hdr/include/." "$WURZEL/usr/include/"
+	rm -rf "$src" "$BAU/hdr"
+}
+
+b_musl() {
+	local src
+	src=$(auspacken musl)
+	flicken "$src" musl
+	cd "$src"
+	CC="$ZIEL-gcc" ./configure --prefix=/usr --syslibdir=/usr/lib --target="$ZIEL" CROSS_COMPILE="$ZIEL-"
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install
+	ln -sf libc.so "$WURZEL/usr/lib/ld-musl-x86_64.so.1"
+	ln -sf ../lib/libc.so "$WURZEL/usr/bin/ldd"
+	aufraeumen "$src"
+}
+
+b_gcc_laufzeit() {
+	# bis die native Toolchain sie ersetzt: libgcc_s und libstdc++ aus stage0
+	cp -a "$TC/$ZIEL/lib/"libgcc_s.so* "$TC/$ZIEL/lib/"libstdc++.so* "$WURZEL/usr/lib/"
+	rm -f "$WURZEL/usr/lib/"*.py
+}
+
+b_zlib() {
+	local src
+	src=$(auspacken zlib)
+	cd "$src"
+	CHOST=$ZIEL ./configure --prefix=/usr --libdir=/usr/lib --shared
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install
+	rm -f "$WURZEL/usr/lib/libz.a"
+	aufraeumen "$src"
+}
+
+b_bzip2() {
+	local src
+	src=$(auspacken bzip2)
+	cd "$src"
+	make -f Makefile-libbz2_so CC="$CC" CFLAGS="$CFLAGS -fPIC -D_FILE_OFFSET_BITS=64"
+	make CC="$CC" AR="$AR" RANLIB="$RANLIB" CFLAGS="$CFLAGS -D_FILE_OFFSET_BITS=64" bzip2 bzip2recover
+	install -Dm755 bzip2-shared "$WURZEL/usr/bin/bzip2"
+	install -m755 bzip2recover bzdiff bzgrep bzmore "$WURZEL/usr/bin/"
+	ln -sf bzip2 "$WURZEL/usr/bin/bunzip2"
+	ln -sf bzip2 "$WURZEL/usr/bin/bzcat"
+	cp -a libbz2.so.1.0.8 "$WURZEL/usr/lib/"
+	ln -sf libbz2.so.1.0.8 "$WURZEL/usr/lib/libbz2.so"
+	ln -sf libbz2.so.1.0.8 "$WURZEL/usr/lib/libbz2.so.1"
+	ln -sf libbz2.so.1.0.8 "$WURZEL/usr/lib/libbz2.so.1.0"
+	install -m644 bzlib.h "$WURZEL/usr/include/"
+	mkdir -p "$WURZEL/usr/lib/pkgconfig"
+	cat >"$WURZEL/usr/lib/pkgconfig/bzip2.pc" <<-EOF
+		prefix=/usr
+		libdir=\${prefix}/lib
+		includedir=\${prefix}/include
+		Name: bzip2
+		Description: bzip2 Kompression
+		Version: $(version bzip2)
+		Libs: -L\${libdir} -lbz2
+		Cflags: -I\${includedir}
+	EOF
+	aufraeumen "$src"
+}
+
+b_xz() { autotools xz --disable-doc; }
+
+b_zstd() {
+	local src
+	src=$(auspacken zstd)
+	cd "$src"
+	make -j"$JOBS" -C lib CC="$CC" PREFIX=/usr libzstd
+	make -j"$JOBS" -C programs CC="$CC" PREFIX=/usr HAVE_LZ4=0 zstd
+	make -C lib CC="$CC" PREFIX=/usr DESTDIR="$WURZEL" install-shared install-includes install-pc
+	make -C programs CC="$CC" PREFIX=/usr DESTDIR="$WURZEL" HAVE_LZ4=0 install
+	aufraeumen "$src"
+}
+
+b_openssl() {
+	local src
+	src=$(auspacken openssl)
+	cd "$src"
+	./Configure linux-x86_64 --prefix=/usr --openssldir=/etc/ssl --libdir=lib \
+		shared enable-ktls no-tests no-docs zlib-dynamic "-Wa,--noexecstack"
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install_sw install_ssldirs
+	aufraeumen "$src"
+}
+
+b_cacert() {
+	install -Dm644 "$(quelle cacert)" "$WURZEL/etc/ssl/certs/ca-certificates.crt"
+	ln -sf certs/ca-certificates.crt "$WURZEL/etc/ssl/cert.pem"
+}
+
+b_libarchive() {
+	autotools libarchive --without-xml2 --without-expat --without-nettle --without-mbedtls \
+		--without-lz4 --without-libb2 --with-openssl --with-zstd --with-lzma --with-bz2lib \
+		--with-zlib --disable-acl
+}
+
+b_curl() {
+	autotools curl --with-openssl --with-zlib --with-zstd --without-libpsl --without-brotli \
+		--without-nghttp2 --without-libidn2 --without-libssh2 --disable-ldap --disable-ldaps \
+		--disable-manual --enable-ipv6 --with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
+		--without-ca-path --with-random=/dev/urandom
+}
+
+b_libgpg_error() { autotools libgpg-error --disable-doc --disable-tests --enable-install-gpg-error-config; }
+
+b_libassuan() {
+	GPGRT_CONFIG=$WERKZEUG/gpgrt-config autotools libassuan --disable-doc
+}
+
+b_gpgme() {
+	GPGRT_CONFIG=$WERKZEUG/gpgrt-config autotools gpgme --disable-gpg-test --disable-gpgsm-test \
+		--disable-gpgconf-test --disable-g13-test --enable-languages= --disable-glibtest
+}
+
+b_busybox() {
+	local src l
+	src=$(auspacken busybox)
+	flicken "$src" busybox
+	cd "$src"
+	env -u CC -u CFLAGS -u LDFLAGS make HOSTCC=gcc defconfig
+	# tc braucht CBQ-Header, die Linux ≥ 6.8 nicht mehr hat; wget mit TLS (für https)
+	sed -i -e 's/^CONFIG_TC=y/# CONFIG_TC is not set/' \
+		-e 's/^# CONFIG_FEATURE_WGET_HTTPS is not set/CONFIG_FEATURE_WGET_HTTPS=y/' \
+		-e "s|^CONFIG_CROSS_COMPILER_PREFIX=.*|CONFIG_CROSS_COMPILER_PREFIX=\"$ZIEL-\"|" \
+		-e "s|^CONFIG_SYSROOT=.*|CONFIG_SYSROOT=\"$WURZEL\"|" \
+		-e 's/^CONFIG_FEATURE_SH_STANDALONE=y/# CONFIG_FEATURE_SH_STANDALONE is not set/' .config
+	{ yes '' || true; } | env -u CC -u CFLAGS -u LDFLAGS make HOSTCC=gcc oldconfig >/dev/null
+	env -u CC -u CFLAGS -u LDFLAGS make -j"$JOBS" HOSTCC=gcc busybox busybox.links
+	install -Dm755 busybox "$WURZEL/usr/bin/busybox"
+	# Links nur dort, wo kein echtes Programm liegt (BusyBox kommt deshalb zuletzt)
+	while read -r l; do
+		l=${l##*/}
+		[[ -e $WURZEL/usr/bin/$l || -L $WURZEL/usr/bin/$l ]] || ln -s busybox "$WURZEL/usr/bin/$l"
+	done <busybox.links
+	cp .config "$WURZEL/usr/share/doc/busybox.config" 2>/dev/null || install -Dm644 .config "$WURZEL/usr/share/doc/busybox.config"
+	aufraeumen "$src"
+}
+
+# überschreibt einen BusyBox-Link durch das echte Programm (install folgt sonst dem Link)
+ersetze_links() {
+	local b
+	for b; do [[ -L $WURZEL/usr/bin/$b ]] && rm -f "$WURZEL/usr/bin/$b"; done
+	return 0
+}
+
+b_bash() {
+	local src i
+	src=$(auspacken bash)
+	cd "$src"
+	for i in $(seq -w 1 20); do patch -Np0 -i "$(quelle "bash-p0$i")"; done
+	./configure "${conf[@]}" --without-bash-malloc --disable-nls --with-curses=no \
+		bash_cv_getcwd_malloc=yes bash_cv_job_control_missing=present bash_cv_sys_named_pipes=present \
+		bash_cv_func_sigsetjmp=present bash_cv_printf_a_format=yes bash_cv_unusable_rtsigs=no \
+		bash_cv_func_ctype_nonascii=no bash_cv_wcwidth_broken=no bash_cv_dup2_broken=no \
+		bash_cv_func_strtold_broken=no bash_cv_under_sys_siglist=yes bash_cv_sys_siglist=yes
+	make -j"$JOBS"
+	ersetze_links bash sh
+	make DESTDIR="$WURZEL" install
+	ln -sf bash "$WURZEL/usr/bin/sh"
+	rm -rf "$WURZEL/usr/lib/bash"/*.h
+	aufraeumen "$src"
+}
+
+b_make() {
+	ersetze_links make
+	# make 4.4.1 deklariert getenv() ohne Prototyp (C23-Fehler mit gcc ≥ 15)
+	CFLAGS="$CFLAGS -std=gnu17" autotools make --without-guile
+}
+
+b_patch() {
+	ersetze_links patch
+	autotools patch
+}
+
+b_fakeroot() {
+	local src
+	src=$(auspacken fakeroot)
+	flicken "$src" fakeroot
+	cd "$src"
+	# musl hat capset(), aber kein <sys/capability.h> → nicht einwickeln
+	./configure "${conf[@]}" --libdir=/usr/lib/libfakeroot --with-ipc=sysv ac_cv_func_capset=no
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install
+	aufraeumen "$src"
+}
+
+b_pkgconf() {
+	autotools pkgconf --with-system-libdir=/usr/lib --with-system-includedir=/usr/include
+	ln -sf pkgconf "$WURZEL/usr/bin/pkg-config"
+	ln -sf "pkgconf" "$WURZEL/usr/bin/$ZIEL-pkg-config"
+}
+
+b_rcyay() {
+	local src=$BAU/rcyay-src
+	[[ -n ${RCYAY_QUELLE:-} ]] || abbruch "rcyay-Quelle nicht gefunden (RCYAY_QUELLE setzen)"
+	rm -rf "$src" "$BAU/rcyay-bau"
+	mkdir -p "$src"
+	git -c safe.directory='*' -C "$RCYAY_QUELLE" archive --format=tar "$RCYAY_REF" | tar -x -C "$src"
+	git -c safe.directory='*' -C "$RCYAY_QUELLE" rev-parse "$RCYAY_REF" >"$BAU/rcyay.commit"
+	cat >"$BAU/kreuz.ini" <<-EOF
+		[binaries]
+		c = ['$ZIEL-gcc', '--sysroot=$WURZEL']
+		ar = '$ZIEL-ar'
+		strip = '$ZIEL-strip'
+		pkg-config = 'pkg-config'
+		[built-in options]
+		c_args = ['-O2', '-pipe']
+		c_link_args = ['-Wl,-z,relro', '-Wl,-z,now']
+		[properties]
+		sys_root = '$WURZEL'
+		pkg_config_libdir = '$PKG_CONFIG_LIBDIR'
+		[host_machine]
+		system = 'linux'
+		cpu_family = 'x86_64'
+		cpu = 'x86_64'
+		endian = 'little'
+	EOF
+	local opt=()
+	# rcyay ergänzt eigene Optionen erst später; nur setzen, was es gibt
+	grep -q "'file-seccomp'" "$src/meson_options.txt" && opt+=(-Dfile-seccomp=disabled)
+	meson setup "$BAU/rcyay-bau" "$src" --cross-file "$BAU/kreuz.ini" \
+		--prefix=/usr --sysconfdir=/etc --localstatedir=/var --buildtype=plain \
+		-Ddoc=disabled -Di18n=false -Dcurl=enabled -Dgpgme=enabled -Dcrypto=openssl \
+		-Dscriptlet-shell=/usr/bin/bash -Dldconfig=/usr/bin/ldconfig \
+		-Dpkg-ext=.pkg.tar.zst "${opt[@]}"
+	meson compile -C "$BAU/rcyay-bau" -j "$JOBS"
+	DESTDIR="$WURZEL" meson install -C "$BAU/rcyay-bau" --no-rebuild
+	cp "$BAU/rcyay.commit" "$WURZEL/usr/share/doc/rcyay.commit" 2>/dev/null ||
+		install -Dm644 "$BAU/rcyay.commit" "$WURZEL/usr/share/doc/rcyay.commit"
+	# Variante musl: eigene Architektur-Kennung, CHOST der nativen Toolchain
+	sed -i "s/^Architecture = .*/Architecture = $ARCH_KENNUNG/" "$WURZEL/etc/pacman.conf"
+	sed -i -e "s/^CARCH=.*/CARCH=\"$ARCH_KENNUNG\"/" -e "s/^CHOST=.*/CHOST=\"$ZIEL\"/" \
+		-e 's/ -fno-plt//' "$WURZEL/etc/makepkg.conf"
+	rm -rf "$src" "$BAU/rcyay-bau"
+}
+
+b_binutils_nativ() {
+	local src
+	src=$(auspacken binutils)
+	mkdir -p "$BAU/binutils-nativ"
+	cd "$BAU/binutils-nativ"
+	"$src/configure" "${conf[@]}" --target="$ZIEL" --with-sysroot=/ --with-lib-path=/usr/lib \
+		--disable-werror --disable-gprofng --disable-multilib --enable-deterministic-archives \
+		--enable-ld=default --enable-plugins --enable-shared --enable-64-bit-bfd \
+		--with-system-zlib --enable-new-dtags --enable-relro --with-pic
+	make -j"$JOBS" tooldir=/usr
+	ersetze_links ar strings strip readelf nm objdump size
+	make DESTDIR="$WURZEL" tooldir=/usr install
+	cd "$BAU"
+	rm -rf "$BAU/binutils-nativ" "$src"
+	find "$WURZEL/usr/lib" -name '*.la' -delete
+	rm -f "$WURZEL/usr/lib/"lib{bfd,ctf,ctf-nobfd,opcodes,sframe}.a
+}
+
+b_gcc_nativ() {
+	local src
+	src=$(auspacken gcc "$BAU/gccn-src")
+	ln -sfn "$(auspacken gmp)" "$src/gmp"
+	ln -sfn "$(auspacken mpfr)" "$src/mpfr"
+	ln -sfn "$(auspacken mpc)" "$src/mpc"
+	sed -i '/m64=/s/lib64/lib/' "$src/gcc/config/i386/t-linux64"
+	flicken "$src" gcc
+	mkdir -p "$BAU/gcc-nativ"
+	cd "$BAU/gcc-nativ"
+	# Canadian Cross: Bauwirt glibc, Wirt = Ziel = musl; Ziel-Bibliotheken mit $ZIEL-gcc gegen $WURZEL
+	CC="$ZIEL-gcc --sysroot=$WURZEL" CXX="$ZIEL-g++ --sysroot=$WURZEL" \
+		CC_FOR_TARGET="$ZIEL-gcc" CXX_FOR_TARGET="$ZIEL-g++" \
+		"$src/configure" --build="$BAUWIRT" --host="$ZIEL" --target="$ZIEL" \
+		--prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib --mandir=/usr/share/man \
+		--infodir=/usr/share/info --with-build-sysroot="$WURZEL" \
+		--with-native-system-header-dir=/usr/include \
+		--enable-languages=c,c++ --enable-shared --enable-threads=posix --enable-tls \
+		--enable-__cxa_atexit --enable-lto --enable-plugin --enable-default-pie \
+		--enable-default-ssp --enable-initfini-array --enable-linker-build-id \
+		--with-linker-hash-style=gnu --enable-checking=release --disable-multilib \
+		--disable-nls --disable-werror --disable-libsanitizer --disable-libssp \
+		--disable-symvers --disable-libstdcxx-pch --disable-fixed-point --disable-cet --disable-libcc1 \
+		--enable-libstdcxx-time --disable-bootstrap --with-arch=x86-64 --with-tune=generic \
+		--with-system-zlib
+	make -j"$JOBS"
+	make DESTDIR="$WURZEL" install
+	ln -sf gcc "$WURZEL/usr/bin/cc"
+	ln -sf g++ "$WURZEL/usr/bin/c++"
+	ln -sf ../bin/cpp "$WURZEL/usr/lib/cpp"
+	# LTO-Plugin für ar/nm/ranlib
+	mkdir -p "$WURZEL/usr/lib/bfd-plugins"
+	ln -sf "../gcc/$ZIEL/$(version gcc)/liblto_plugin.so" "$WURZEL/usr/lib/bfd-plugins/"
+	rm -f "$WURZEL/usr/lib/"*.py
+	cd "$BAU"
+	rm -rf "$BAU/gcc-nativ" "$src" "$BAU/gmp-src" "$BAU/mpfr-src" "$BAU/mpc-src"
+	find "$WURZEL/usr/lib" -name '*.la' -delete
+}
+
+b_grundsystem() {
+	cd "$WURZEL/etc"
+	cat >passwd <<-EOF
+		root:x:0:0:root:/root:/usr/bin/bash
+		bin:x:1:1::/:/usr/bin/nologin
+		daemon:x:2:2::/:/usr/bin/nologin
+		bau:x:1000:1000:makepkg:/home/bau:/usr/bin/bash
+		nobody:x:65534:65534:Nobody:/:/usr/bin/nologin
+	EOF
+	cat >group <<-EOF
+		root:x:0:root
+		bin:x:1:root,bin,daemon
+		daemon:x:2:root,bin,daemon
+		sys:x:3:root,bin
+		tty:x:5:
+		disk:x:6:root
+		wheel:x:10:root
+		kmem:x:9:
+		audio:x:12:
+		video:x:13:
+		input:x:97:
+		bau:x:1000:
+		nobody:x:65534:
+	EOF
+	printf '%s\n' 'root:!*::::::' 'bin:!*::::::' 'daemon:!*::::::' 'bau:!*::::::' 'nobody:!*::::::' >shadow
+	chmod 0600 shadow
+	printf '%s\n' '127.0.0.1 localhost' '::1 localhost' >hosts
+	printf 'usrside\n' >hostname
+	printf '%s\n' /bin/sh /usr/bin/sh /usr/bin/bash /bin/bash >shells
+	cat >profile <<-'EOF'
+		export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin
+		export LANG=C.UTF-8
+		umask 022
+		for f in /etc/profile.d/*.sh; do [ -r "$f" ] && . "$f"; done
+		unset f
+	EOF
+	cat >os-release <<-EOF
+		NAME="UsrsideOS"
+		PRETTY_NAME="UsrsideOS ($VARIANTE)"
+		ID=usrside
+		ID_LIKE=arch
+		VARIANT_ID=$VARIANTE
+		BUILD_ID=bootstrap
+		HOME_URL="https://github.com/Lord3n20/usrsideos"
+	EOF
+	mkdir -p "$WURZEL/home/bau" "$WURZEL/var/lib/pacman" "$WURZEL/var/cache/pacman/pkg"
+	chown -R 1000:1000 "$WURZEL/home/bau" 2>/dev/null || true
+	rm -f "$WURZEL/usr/bin/nologin"
+	printf '#!/bin/sh\necho "This account is not available"\nexit 1\n' >"$WURZEL/usr/bin/nologin"
+	chmod 755 "$WURZEL/usr/bin/nologin"
+}
+
+b_entschlacken() {
+	local f
+	while IFS= read -r -d '' f; do
+		[[ $(head -c4 "$f" | od -An -c | tr -d ' ') == 177ELF ]] || continue
+		case $f in
+		*.a | *.o) ;;
+		*/usr/lib/gcc/* | */libfakeroot/*) ;;
+		*.so* | */usr/bin/*) "$ZIEL-strip" --strip-unneeded "$f" 2>/dev/null || true ;;
+		esac
+	done < <(find "$WURZEL/usr/bin" "$WURZEL/usr/lib" -type f -print0)
+	rm -rf "$WURZEL/usr/share/man" "$WURZEL/usr/share/doc/"*/ "$WURZEL/usr/share/info" "$WURZEL/usr/share/gtk-doc"
+	mkdir -p "$WURZEL/usr/share/man"
+}
+
+b_pruefen() {
+	pruefe_elf "$WURZEL"
+	local b
+	for b in busybox bash make patch bsdtar curl openssl xz zstd bzip2 gcc g++ ld as pacman rcyay makepkg \
+		fakeroot faked pkgconf gpgrt-config; do
+		[[ -e $WURZEL/usr/bin/$b ]] || abbruch "fehlt im Sysroot: /usr/bin/$b"
+	done
+	[[ -e $WURZEL/usr/lib/libalpm.so ]] || abbruch "fehlt im Sysroot: libalpm"
+	# im chroot kurz ausführen (ohne Netz und Geräte)
+	if [[ $EUID == 0 ]]; then
+		mount --bind /dev "$WURZEL/dev"
+		mount -t proc proc "$WURZEL/proc"
+		trap 'umount "$WURZEL/proc" "$WURZEL/dev"' EXIT
+		chroot "$WURZEL" /usr/bin/bash -c 'echo hallo | busybox sed s/a/e/ && pacman -V && gcc --version | head -n1 &&
+			printf "int main(void){return 0;}" >/tmp/t.c && gcc -o /tmp/t /tmp/t.c && /tmp/t && rm /tmp/t /tmp/t.c'
+	fi
+}
+
+schritt stage1-wurzel b_wurzel_anlegen
+schritt stage1-header b_header
+schritt stage1-musl b_musl
+schritt stage1-gcc-laufzeit b_gcc_laufzeit
+schritt stage1-zlib b_zlib
+schritt stage1-bzip2 b_bzip2
+schritt stage1-xz b_xz
+schritt stage1-zstd b_zstd
+schritt stage1-openssl b_openssl
+schritt stage1-cacert b_cacert
+schritt stage1-libarchive b_libarchive
+schritt stage1-curl b_curl
+schritt stage1-libgpg-error b_libgpg_error
+schritt stage1-libassuan b_libassuan
+schritt stage1-gpgme b_gpgme
+schritt stage1-bash b_bash
+schritt stage1-make b_make
+schritt stage1-patch b_patch
+schritt stage1-fakeroot b_fakeroot
+schritt stage1-pkgconf b_pkgconf
+schritt stage1-rcyay b_rcyay
+schritt stage1-binutils b_binutils_nativ
+schritt stage1-gcc b_gcc_nativ
+schritt stage1-busybox b_busybox
+schritt stage1-grundsystem b_grundsystem
+schritt stage1-entschlacken b_entschlacken
+NEU=1 schritt stage1-pruefen b_pruefen
+meldung "stage1 fertig: $WURZEL"

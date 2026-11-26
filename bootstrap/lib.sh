@@ -31,9 +31,9 @@ TC=${TC:-/opt/usrside-tc}
 TCSYS=$TC/$ZIEL/sysroot
 ARBEIT=${ARBEIT:-/var/tmp/usrside}
 QUELLEN=${QUELLEN:-$ARBEIT/quellen}
-BAU=$ARBEIT/$VARIANTE/bau
-LOGS=$ARBEIT/$VARIANTE/logs
-FERTIG=$ARBEIT/$VARIANTE/fertig
+BAU=${BAU:-$ARBEIT/$VARIANTE/bau}
+LOGS=${LOGS:-$ARBEIT/$VARIANTE/logs}
+FERTIG=${FERTIG:-$ARBEIT/$VARIANTE/fertig}
 WURZEL=${WURZEL:-$ARBEIT/$VARIANTE/wurzel}
 if [[ -z ${JOBS:-} ]]; then
 	JOBS=$(nproc)
@@ -42,6 +42,8 @@ if [[ -z ${JOBS:-} ]]; then
 	unset _gib
 fi
 export LC_ALL=C TZ=UTC
+# Fehler in $(…) sollen wie überall sonst abbrechen
+shopt -s inherit_errexit
 # reproduzierbare Zeitstempel (gzip, ar, Python, …)
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-1795651200} # 2026-11-26
 
@@ -103,7 +105,7 @@ auspacken() {
 	rm -rf "$ziel"
 	mkdir -p "$ziel"
 	if command -v bsdtar >/dev/null; then
-		bsdtar -xf "$datei" -C "$ziel" --no-same-owner
+		LC_ALL=C.UTF-8 bsdtar -xf "$datei" -C "$ziel" --no-same-owner
 	else
 		tar -xf "$datei" -C "$ziel" --no-same-owner
 	fi
@@ -170,6 +172,30 @@ pruefe_elf() {
 		fi
 	done < <(find "$1" -type f \( -perm -u+x -o -name '*.so*' \) -print0)
 	return "$schlecht"
+}
+
+# chroot-Einhängepunkte: einhaengen WURZEL QUELLE ZIEL [mount-Optionen …]; aushaengen räumt alles ab
+eingehaengt=()
+einhaengen() {
+	local w=$1 q=$2 z=$1$3
+	shift 3
+	mkdir -p "$z"
+	mountpoint -q "$z" && return 0
+	mount "$@" "$q" "$z"
+	eingehaengt=("$z" "${eingehaengt[@]}")
+}
+aushaengen() {
+	local z
+	for z in "${eingehaengt[@]}"; do umount -l "$z" 2>/dev/null || true; done
+	eingehaengt=()
+}
+# chroot_grund WURZEL – /dev, /dev/pts, /proc, /sys, /run
+chroot_grund() {
+	einhaengen "$1" /dev /dev --bind
+	einhaengen "$1" devpts /dev/pts -t devpts -o gid=5,mode=620
+	einhaengen "$1" proc /proc -t proc
+	einhaengen "$1" sysfs /sys -t sysfs
+	einhaengen "$1" tmpfs /run -t tmpfs
 }
 
 # brauche BEFEHL … – bricht ab, wenn ein Werkzeug des Bauwirts fehlt
