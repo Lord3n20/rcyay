@@ -1,7 +1,7 @@
 # runit (smarden.org) als Init und Dienstüberwachung
 pkgname=runit
 pkgver=2.3.1
-pkgrel=1
+pkgrel=2
 pkgdesc='UNIX init scheme with service supervision'
 arch=(x86_64)
 url='https://smarden.org/runit/'
@@ -12,6 +12,9 @@ sha256sums=('634f23c8c4d1d440043be0fe928ddf904626289e97bfe7c5826e93aaf2cc6fe9')
 
 build() {
 	cd admin/runit-$pkgver/src
+	# sv sucht Dienste wie bei Void unter /var/service (Standard /service)
+	sed -i 's|varservice ="/service/"|varservice ="/var/service/"|' sv.c
+	grep -q 'varservice ="/var/service/"' sv.c
 	echo "${CC:-gcc} $CFLAGS" >conf-cc
 	echo "${CC:-gcc} $LDFLAGS" >conf-ld
 	make

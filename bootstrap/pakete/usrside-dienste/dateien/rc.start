@@ -6,6 +6,11 @@ m proc /proc nosuid,noexec,nodev
 m sysfs /sys nosuid,noexec,nodev
 m devtmpfs /dev mode=0755,nosuid
 mkdir -p /dev/pts /dev/shm
+# devtmpfs hat weder /dev/fd noch stdin/stdout/stderr (bash <(…), makepkg)
+[ -e /dev/fd ] || ln -s /proc/self/fd /dev/fd
+for i in 0:stdin 1:stdout 2:stderr; do
+	[ -e "/dev/${i#*:}" ] || ln -s "/proc/self/fd/${i%:*}" "/dev/${i#*:}"
+done
 m devpts /dev/pts gid=5,mode=620,nosuid,noexec
 m tmpfs /dev/shm mode=1777,nosuid,nodev
 m tmpfs /run mode=0755,nosuid,nodev
