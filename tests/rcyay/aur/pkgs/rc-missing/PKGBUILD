@@ -1,0 +1,9 @@
+pkgname=rc-missing
+pkgver=1
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="fehlende Abhaengigkeit"
+depends=(gibt-es-nicht-rcyay)
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

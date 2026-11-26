@@ -61,7 +61,7 @@ void rc_warn(const char *fmt, ...)
 {
 	va_list ap;
 	fflush(stdout);
-	fprintf(stderr, "%sWarnung:%s ", col(1), col(3));
+	fprintf(stderr, "%s%s%s", col(1), P_("warning: "), col(3));
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -71,7 +71,7 @@ void rc_err(const char *fmt, ...)
 {
 	va_list ap;
 	fflush(stdout);
-	fprintf(stderr, "%sFehler:%s ", col(2), col(3));
+	fprintf(stderr, "%s%s%s", col(2), P_("error: "), col(3));
 	va_start(ap, fmt);
 	vfprintf(stderr, fmt, ap);
 	va_end(ap);
@@ -255,7 +255,7 @@ int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, cons
 			struct passwd *pw = getpwuid(uid);
 			if((pw && initgroups(pw->pw_name, gid) != 0) || (!pw && setgroups(0, NULL) != 0) ||
 					setgid(gid) != 0 || setuid(uid) != 0) {
-				fprintf(stderr, "rcyay: Nutzerwechsel fehlgeschlagen: %s\n", strerror(errno));
+				fprintf(stderr, _("rcyay: switching user failed: %s\n"), strerror(errno));
 				_exit(127);
 			}
 			if(pw) {
@@ -333,7 +333,7 @@ int rc_pacman(alpm_list_t *args, int root)
 	}
 	if(root && geteuid() != 0) {
 		if(!rc_have_program(R.sudo)) {
-			rc_err("Für diesen Schritt sind Root-Rechte nötig, aber %s fehlt.\n", R.sudo);
+			rc_err(_("this step needs root privileges, but %s is missing\n"), R.sudo);
 			free(v);
 			return 1;
 		}
@@ -381,7 +381,7 @@ int rc_build_user(uid_t *uid, gid_t *gid, char **home)
 		if(asprintf(&homedir, "/var/lib/%s", R.builduser) < 0) {
 			return -1;
 		}
-		rc_msg("Lege den Bau-Nutzer %s an (makepkg läuft nie als root)\n", R.builduser);
+		rc_msg(_("Creating build user %s (makepkg never runs as root)\n"), R.builduser);
 		if(rc_have_program("useradd")) {
 			const char *argv[] = { "useradd", "-r", "-m", "-d", homedir, "-s", "/bin/sh",
 				"-c", "rcyay build user", R.builduser, NULL };
@@ -391,21 +391,21 @@ int rc_build_user(uid_t *uid, gid_t *gid, char **home)
 				R.builduser, NULL };
 			ret = rc_run(argv, NULL, (uid_t)-1, (gid_t)-1, NULL, NULL);
 		} else {
-			rc_err("Weder useradd noch adduser gefunden – Bau-Nutzer %s fehlt.\n", R.builduser);
+			rc_err(_("neither useradd nor adduser found - build user %s is missing\n"), R.builduser);
 		}
 		free(homedir);
 		if(ret != 0) {
-			rc_err("Bau-Nutzer %s konnte nicht angelegt werden.\n", R.builduser);
+			rc_err(_("could not create build user %s\n"), R.builduser);
 			return -1;
 		}
 		pw = getpwnam(R.builduser);
 		if(!pw) {
-			rc_err("Bau-Nutzer %s fehlt nach dem Anlegen.\n", R.builduser);
+			rc_err(_("build user %s is missing after creating it\n"), R.builduser);
 			return -1;
 		}
 	}
 	if(pw->pw_uid == 0) {
-		rc_err("Bau-Nutzer %s hat UID 0 – makepkg darf nicht als root laufen.\n", R.builduser);
+		rc_err(_("build user %s has UID 0 - makepkg must not run as root\n"), R.builduser);
 		return -1;
 	}
 	*uid = pw->pw_uid;

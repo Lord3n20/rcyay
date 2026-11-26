@@ -16,6 +16,7 @@
 
 #include "resolve.h"
 #include "aurutil.h"
+#include "aurintl.h"
 
 typedef struct {
 	aur_base_t *base;
@@ -140,8 +141,8 @@ static aur_base_t *add_pkg(state_t *st, aur_pkg_t *pkg, const char *pkgname, int
 		}
 		si = st->r->srcinfo(st->r->ud, pkg, &err);
 		if(!si) {
-			add_error(st->plan, "%s: cannot read .SRCINFO: %s", pkg->pkgbase,
-					err ? err : "unknown error");
+			add_error(st->plan, _("%s: cannot read .SRCINFO: %s"), pkg->pkgbase,
+					err ? err : _("unknown error"));
 			free(err);
 			st->failed = alpm_list_add(st->failed, strdup(pkg->pkgbase));
 			return NULL;
@@ -158,12 +159,12 @@ static aur_base_t *add_pkg(state_t *st, aur_pkg_t *pkg, const char *pkgname, int
 		st->all = alpm_list_add(st->all, b);
 	}
 	if(!aur_srcinfo_find_pkg(b->srcinfo, pkgname)) {
-		add_error(st->plan, "%s: package %s missing in .SRCINFO", b->pkgbase, pkgname);
+		add_error(st->plan, _("%s: package %s missing in .SRCINFO"), b->pkgbase, pkgname);
 		return NULL;
 	}
 	if(!aur_srcinfo_supports_arch(b->srcinfo, aur_srcinfo_find_pkg(b->srcinfo, pkgname),
 				st->r->arch)) {
-		add_error(st->plan, "%s: not available for architecture %s", pkgname,
+		add_error(st->plan, _("%s: not available for architecture %s"), pkgname,
 				st->r->arch ? st->r->arch : "?");
 	}
 	if(explicit) {
@@ -301,7 +302,7 @@ static void resolve_dep(state_t *st, aur_base_t *b, const char *from_pkg,
 		}
 		return;
 	}
-	add_error(st->plan, "dependency not found: %s (required by %s)", dep,
+	add_error(st->plan, _("dependency not found: %s (required by %s)"), dep,
 			from_pkg ? from_pkg : b->pkgbase);
 }
 
@@ -380,7 +381,7 @@ static int visit(state_t *st, aur_base_t *b, alpm_list_t **path)
 	}
 	if(b->mark == 1) {
 		/* Zyklus: Pfad ab b ausgeben */
-		char *msg = strdup("dependency cycle:"), *n;
+		char *msg = strdup(_("dependency cycle:")), *n;
 		int on = 0;
 		for(alpm_list_t *i = *path; i; i = i->next) {
 			aur_base_t *x = i->data;
@@ -404,7 +405,11 @@ static int visit(state_t *st, aur_base_t *b, alpm_list_t **path)
 			return -1;
 		}
 	}
-	*path = alpm_list_remove_item(*path, alpm_list_last(*path));
+	{
+		alpm_list_t *last = alpm_list_last(*path);
+		*path = alpm_list_remove_item(*path, last);
+		free(last);
+	}
 	b->mark = 2;
 	st->plan->bases = alpm_list_add(st->plan->bases, b);
 	return 0;
@@ -438,14 +443,16 @@ aur_plan_t *aur_resolve(aur_resolver_t *r, alpm_list_t *targets)
 			alpm_list_free(provs);
 		}
 		if(!p) {
-			add_error(st.plan, "target not found in AUR: %s", t);
+			add_error(st.plan, _("target not found in AUR: %s"), t);
 			continue;
 		}
 		add_pkg(&st, p, p->name, 1);
 	}
 	while(st.queue) {
-		work_t *w = st.queue->data;
-		st.queue = alpm_list_remove_item(st.queue, st.queue);
+		alpm_list_t *head = st.queue;
+		work_t *w = head->data;
+		st.queue = alpm_list_remove_item(st.queue, head);
+		free(head);
 		process(&st, w);
 		free(w->pkgname);
 		free(w);

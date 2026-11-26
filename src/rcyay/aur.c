@@ -54,7 +54,7 @@ int rc_aur_prefetch(alpm_list_t *names)
 		return 0;
 	}
 	if(aur_info(R.ctx, want, &res) != 0) {
-		rc_err("AUR-Abfrage fehlgeschlagen: %s\n", R.ctx->error);
+		rc_err(_("AUR query failed: %s\n"), R.ctx->error);
 		alpm_list_free(want);
 		return -1;
 	}
@@ -98,7 +98,7 @@ alpm_list_t *rc_aur_providers(const char *name)
 	alpm_list_t *found = NULL, *names = NULL, *r = NULL;
 	if(!alpm_list_find_str(R.provcache, name)) {
 		if(aur_search(R.ctx, name, "provides", &found) != 0) {
-			rc_warn("AUR-Suche nach Anbietern von %s fehlgeschlagen: %s\n", name, R.ctx->error);
+			rc_warn(_("AUR search for providers of %s failed: %s\n"), name, R.ctx->error);
 		}
 		for(alpm_list_t *i = found; i; i = i->next) {
 			names = alpm_list_add(names, ((aur_pkg_t *)i->data)->name);
@@ -182,9 +182,25 @@ int rc_is_repo_target(const char *target)
 
 /* ---------- -Ss ---------- */
 
+/* Sortierung wie yay: votes (Standard), popularity, name, modified;
+ * "beste" zuerst – die Anzeige dreht bei BottomUp um */
 static int pkg_cmp(const void *a, const void *b)
 {
-	return strcmp(((const aur_pkg_t *)a)->name, ((const aur_pkg_t *)b)->name);
+	const aur_pkg_t *x = a, *y = b;
+	const char *by = R.sortby ? R.sortby : "votes";
+	if(strcmp(by, "name") == 0) {
+		return strcmp(x->name, y->name);
+	} else if(strcmp(by, "popularity") == 0) {
+		if(x->popularity > y->popularity) return -1;
+		if(x->popularity < y->popularity) return 1;
+	} else if(strcmp(by, "modified") == 0) {
+		if(x->lastmodified != y->lastmodified) return x->lastmodified > y->lastmodified ? -1 : 1;
+	} else {
+		if(x->votes != y->votes) return x->votes > y->votes ? -1 : 1;
+		if(x->popularity > y->popularity) return -1;
+		if(x->popularity < y->popularity) return 1;
+	}
+	return strcmp(x->name, y->name);
 }
 
 static int matches_all(aur_pkg_t *p, alpm_list_t *terms)
@@ -220,17 +236,17 @@ void rc_print_aur_search(alpm_list_t *pkgs, int quiet, int numbered, int start)
 			char buf[32];
 			time_t t = (time_t)p->outofdate;
 			strftime(buf, sizeof(buf), "%Y-%m-%d", localtime(&t));
-			printf(" %s(Veraltet: %s)%s", c->err, buf, c->nocolor);
+			printf(" %s(%s: %s)%s", c->err, _("Out-of-date"), buf, c->nocolor);
 		}
 		if(!p->maintainer) {
-			printf(" %s(verwaist)%s", c->warn, c->nocolor);
+			printf(" %s%s%s", c->warn, _("(orphaned)"), c->nocolor);
 		}
 		if(lp) {
 			const char *lv = alpm_pkg_get_version(lp);
 			if(strcmp(lv, p->version) == 0) {
-				printf(" %s[installiert]%s", c->meta, c->nocolor);
+				printf(" %s[%s]%s", c->meta, P_("installed"), c->nocolor);
 			} else {
-				printf(" %s[installiert: %s]%s", c->meta, lv, c->nocolor);
+				printf(" %s[%s: %s]%s", c->meta, P_("installed"), lv, c->nocolor);
 			}
 		}
 		fputs("\n    ", stdout);
@@ -254,7 +270,7 @@ static int aur_search_terms(alpm_list_t *terms, alpm_list_t **out)
 		return 0;
 	}
 	if(aur_search(R.ctx, best, "name-desc", &res) != 0) {
-		rc_err("AUR-Suche fehlgeschlagen: %s\n", R.ctx->error);
+		rc_err(_("AUR search failed: %s\n"), R.ctx->error);
 		return -1;
 	}
 	for(alpm_list_t *i = res; i; i = i->next) {
@@ -274,11 +290,30 @@ int rc_aur_search_list(alpm_list_t *terms, alpm_list_t **out)
 	return aur_search_terms(terms, out);
 }
 
+static void print_aur_block(alpm_list_t *res)
+{
+	alpm_list_t *show = R.bottomup ? alpm_list_reverse(res) : alpm_list_copy(res);
+	rc_print_aur_search(show, R.cnt['q'] > 0, 0, 0);
+	alpm_list_free(show);
+}
+
 int rc_op_search(void)
 {
 	int found = 0, ret = 0;
 	alpm_list_t *res = NULL;
 
+	/* wie yay: bei BottomUp stehen die besten Treffer (Repos) unten */
+	if(!R.repo_only && R.targets) {
+		if(aur_search_terms(R.targets, &res) != 0) {
+			return 1;
+		}
+		if(res) {
+			found = 1;
+		}
+	}
+	if(res && R.bottomup) {
+		print_aur_block(res);
+	}
 	if(!R.aur_only) {
 		alpm_list_t *args = NULL;
 		int r;
@@ -292,37 +327,66 @@ int rc_op_search(void)
 			ret = r;
 		}
 	}
-	if(!R.repo_only && R.targets) {
-		if(aur_search_terms(R.targets, &res) != 0) {
-			return 1;
-		}
-		if(res) {
-			found = 1;
-			rc_print_aur_search(res, R.cnt['q'] > 0, 0, 0);
-		}
-		aur_pkglist_free(res);
+	if(res && !R.bottomup) {
+		print_aur_block(res);
 	}
+	aur_pkglist_free(res);
 	if(ret) {
 		return ret;
 	}
 	return found ? 0 : 1;
 }
 
-/* ---------- -Si ---------- */
+/* Feldnamen wie pacman -Si: übersetzt, auf gleiche Breite aufgefüllt */
+enum {
+	F_REPO, F_NAME, F_BASE, F_VERSION, F_DESC, F_URL, F_AURURL, F_GROUPS, F_LICENSES,
+	F_PROVIDES, F_DEPENDS, F_MAKEDEPS, F_CHECKDEPS, F_OPTDEPS, F_CONFLICTS, F_REPLACES,
+	F_KEYWORDS, F_MAINT, F_COMAINT, F_VOTES, F_POP, F_FIRST, F_LAST, F_OOD, F_COUNT
+};
 
-static void show_list(const char *title, alpm_list_t *l, unsigned short cols)
+static size_t u8len(const char *s)
 {
-	list_display(title, l, cols);
+	size_t n = 0;
+	for(; *s; s++) {
+		if(((unsigned char)*s & 0xC0) != 0x80) n++;
+	}
+	return n;
+}
+
+static char *labels[F_COUNT];
+
+static void make_labels(void)
+{
+	const char *raw[F_COUNT] = {
+		_("Repository"), _("Name"), _("Package Base"), _("Version"), _("Description"),
+		_("URL"), _("AUR URL"), _("Groups"), _("Licenses"), _("Provides"), _("Depends On"),
+		_("Make Deps"), _("Check Deps"), _("Optional Deps"), _("Conflicts With"),
+		_("Replaces"), _("Keywords"), _("Maintainer"), _("Co-Maintainers"), _("Votes"),
+		_("Popularity"), _("First Submitted"), _("Last Modified"), _("Out-of-date")
+	};
+	size_t max = 0;
+	if(labels[0]) {
+		return;
+	}
+	for(int i = 0; i < F_COUNT; i++) {
+		if(u8len(raw[i]) > max) max = u8len(raw[i]);
+	}
+	for(int i = 0; i < F_COUNT; i++) {
+		size_t pad = max - u8len(raw[i]);
+		if(asprintf(&labels[i], "%s%*s :", raw[i], (int)pad, "") < 0) {
+			labels[i] = NULL;
+		}
+	}
 }
 
 static void show_time(const char *title, long t, unsigned short cols)
 {
 	char buf[64];
+	time_t tt = (time_t)t;
 	if(t <= 0) {
 		string_display(title, NULL, cols);
 		return;
 	}
-	time_t tt = (time_t)t;
 	strftime(buf, sizeof(buf), "%c", localtime(&tt));
 	string_display(title, buf, cols);
 }
@@ -331,38 +395,40 @@ static void aur_show_info(aur_pkg_t *p)
 {
 	unsigned short cols = getcols();
 	char buf[128], *aurl = NULL;
-	string_display("Repository        :", "aur", cols);
-	string_display("Name              :", p->name, cols);
-	string_display("Paketbasis        :", p->pkgbase, cols);
-	string_display("Version           :", p->version, cols);
-	string_display("Beschreibung      :", p->desc, cols);
-	string_display("URL               :", p->url, cols);
+	char **L = labels;
+	make_labels();
+	string_display(L[F_REPO], "aur", cols);
+	string_display(L[F_NAME], p->name, cols);
+	string_display(L[F_BASE], p->pkgbase, cols);
+	string_display(L[F_VERSION], p->version, cols);
+	string_display(L[F_DESC], p->desc, cols);
+	string_display(L[F_URL], p->url, cols);
 	if(asprintf(&aurl, "%s/packages/%s", R.ctx->baseurl, p->name) >= 0) {
-		string_display("AUR-URL           :", aurl, cols);
+		string_display(L[F_AURURL], aurl, cols);
 		free(aurl);
 	}
-	show_list("Gruppen           :", p->groups, cols);
-	show_list("Lizenzen          :", p->licenses, cols);
-	show_list("Stellt bereit     :", p->provides, cols);
-	show_list("Hängt ab von      :", p->depends, cols);
-	show_list("Bauabhängigkeiten :", p->makedepends, cols);
-	show_list("Prüfabhängigkeiten:", p->checkdepends, cols);
-	list_display_linebreak("Optionale Abh.    :", p->optdepends, cols);
-	show_list("Konflikt mit      :", p->conflicts, cols);
-	show_list("Ersetzt           :", p->replaces, cols);
-	show_list("Schlagwörter      :", p->keywords, cols);
-	string_display("Betreuer          :", p->maintainer ? p->maintainer : "(verwaist)", cols);
-	show_list("Mitbetreuer       :", p->comaintainers, cols);
+	list_display(L[F_GROUPS], p->groups, cols);
+	list_display(L[F_LICENSES], p->licenses, cols);
+	list_display(L[F_PROVIDES], p->provides, cols);
+	list_display(L[F_DEPENDS], p->depends, cols);
+	list_display(L[F_MAKEDEPS], p->makedepends, cols);
+	list_display(L[F_CHECKDEPS], p->checkdepends, cols);
+	list_display_linebreak(L[F_OPTDEPS], p->optdepends, cols);
+	list_display(L[F_CONFLICTS], p->conflicts, cols);
+	list_display(L[F_REPLACES], p->replaces, cols);
+	list_display(L[F_KEYWORDS], p->keywords, cols);
+	string_display(L[F_MAINT], p->maintainer ? p->maintainer : _("(orphaned)"), cols);
+	list_display(L[F_COMAINT], p->comaintainers, cols);
 	snprintf(buf, sizeof(buf), "%ld", p->votes);
-	string_display("Stimmen           :", buf, cols);
+	string_display(L[F_VOTES], buf, cols);
 	snprintf(buf, sizeof(buf), "%.2f", p->popularity);
-	string_display("Beliebtheit       :", buf, cols);
-	show_time("Eingereicht       :", p->firstsubmitted, cols);
-	show_time("Zuletzt geändert  :", p->lastmodified, cols);
+	string_display(L[F_POP], buf, cols);
+	show_time(L[F_FIRST], p->firstsubmitted, cols);
+	show_time(L[F_LAST], p->lastmodified, cols);
 	if(p->outofdate) {
-		show_time("Veraltet seit     :", p->outofdate, cols);
+		show_time(L[F_OOD], p->outofdate, cols);
 	} else {
-		string_display("Veraltet seit     :", "Nein", cols);
+		string_display(L[F_OOD], P_("No"), cols);
 	}
 	printf("\n");
 }
@@ -401,7 +467,7 @@ int rc_op_info(void)
 				if(p) {
 					aur_show_info(p);
 				} else {
-					rc_err("Paket '%s' wurde nicht gefunden\n", (char *)i->data);
+					rc_err(_("package '%s' was not found\n"), (char *)i->data);
 					ret = 1;
 				}
 			}
@@ -455,7 +521,7 @@ alpm_list_t *rc_aur_upgrades(alpm_list_t **devel)
 	if(!foreign) {
 		return NULL;
 	}
-	rc_msg("Suche nach AUR-Aktualisierungen...\n");
+	rc_msg(_("Searching AUR for updates...\n"));
 	if(rc_aur_prefetch(foreign) != 0) {
 		alpm_list_free(foreign);
 		return NULL;
@@ -471,7 +537,7 @@ alpm_list_t *rc_aur_upgrades(alpm_list_t **devel)
 		}
 		if(alpm_pkg_vercmp(p->version, lv) > 0) {
 			if(ignored(name)) {
-				rc_warn("%s: ignoriere Aktualisierung (%s => %s)\n", name, lv, p->version);
+				rc_warn(_("%s: ignoring package upgrade (%s => %s)\n"), name, lv, p->version);
 				continue;
 			}
 			printf(" %s %s%s%s -> %s%s%s\n", name, config->colstr.err, lv, config->colstr.nocolor,
@@ -489,11 +555,11 @@ alpm_list_t *rc_aur_upgrades(alpm_list_t **devel)
 				s = n;
 			}
 		}
-		rc_warn("Nicht im AUR (und in keinem Repo): %s\n", s ? s : "");
+		rc_warn(_("not in the AUR (nor in any repository): %s\n"), s ? s : "");
 		free(s);
 	}
 	if(!ups && !*devel) {
-		printf(" Keine AUR-Aktualisierungen.\n");
+		fputs(_(" there is nothing to do in the AUR\n"), stdout);
 	}
 	alpm_list_free(missing);
 	alpm_list_free(foreign);
@@ -528,6 +594,27 @@ static char *gitlab_project(const char *pkgbase)
 	return r;
 }
 
+/* -G nimmt auch pkgbase-Namen (z. B. geteilte Pakete) */
+static aur_pkg_t *find_pkgbase(const char *base)
+{
+	alpm_list_t *res = NULL;
+	aur_pkg_t *hit = NULL;
+	if(strlen(base) < 2 || aur_search(R.ctx, base, "name", &res) != 0) {
+		return NULL;
+	}
+	for(alpm_list_t *i = res; i; i = i->next) {
+		aur_pkg_t *p = i->data;
+		if(!hit && strcmp(p->pkgbase, base) == 0) {
+			hit = p;
+			R.aurcache = alpm_list_add(R.aurcache, p);
+		} else {
+			aur_pkg_free(p);
+		}
+	}
+	alpm_list_free(res);
+	return hit;
+}
+
 static int get_one(const char *target, int print)
 {
 	const char *name = target;
@@ -558,12 +645,15 @@ static int get_one(const char *target, int print)
 	} else {
 		aur_pkg_t *p;
 		if(R.repo_only) {
-			rc_err("Paket '%s' wurde in keinem Repo gefunden\n", name);
+			rc_err(_("package '%s' was not found in any repository\n"), name);
 			return 1;
 		}
 		p = rc_aur_info(name);
 		if(!p) {
-			rc_err("Paket '%s' wurde weder in den Repos noch im AUR gefunden\n", name);
+			p = find_pkgbase(name);
+		}
+		if(!p) {
+			rc_err(_("package '%s' was found neither in the repositories nor in the AUR\n"), name);
 			return 1;
 		}
 		base = p->pkgbase;
@@ -576,7 +666,7 @@ static int get_one(const char *target, int print)
 		char *body = NULL;
 		size_t len = 0;
 		if(aur_http_get(R.ctx, url, &body, &len, &status) != 0) {
-			rc_err("PKGBUILD von %s nicht abrufbar: %s\n", base, R.ctx->error);
+			rc_err(_("cannot fetch PKGBUILD of %s: %s\n"), base, R.ctx->error);
 		} else {
 			fwrite(body, 1, len, stdout);
 			ret = 0;
@@ -591,7 +681,7 @@ static int get_one(const char *target, int print)
 		goto out;
 	}
 	if(aur_http_download(R.ctx, url, tarball, &status) != 0) {
-		rc_err("Download von %s fehlgeschlagen: %s\n", base, R.ctx->error);
+		rc_err(_("download of %s failed: %s\n"), base, R.ctx->error);
 		goto out;
 	}
 	{
@@ -600,7 +690,7 @@ static int get_one(const char *target, int print)
 		if(aur_extract(tarball, dest, 1, err, sizeof(err)) != 0) {
 			rc_err("%s\n", err);
 		} else {
-			printf(":: %s %s (%s)\n", existed ? "Aktualisiert:" : "Geholt:", dest,
+			printf(":: %s %s (%s)\n", existed ? _("Updated:") : _("Downloaded:"), dest,
 					repo ? alpm_db_get_name(alpm_pkg_get_db(rp)) : "aur");
 			ret = 0;
 		}
@@ -618,7 +708,7 @@ int rc_op_getpkgbuild(void)
 	int ret = 0;
 	alpm_list_t *aurnames = NULL;
 	if(!R.targets) {
-		rc_err("Keine Ziele angegeben (rcyay -G PAKET …)\n");
+		rc_err(_("no targets specified (rcyay -G PACKAGE ...)\n"));
 		return 1;
 	}
 	for(alpm_list_t *i = R.targets; i; i = i->next) {

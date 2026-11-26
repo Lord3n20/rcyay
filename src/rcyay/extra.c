@@ -41,7 +41,7 @@ int rc_op_clean(void)
 		FREELIST(opt);
 	}
 	if(!names) {
-		printf(" Keine unnötigen Abhängigkeiten gefunden.\n");
+		fputs(_(" no unneeded dependencies found\n"), stdout);
 		return 0;
 	}
 	for(alpm_list_t *i = R.global; i; i = i->next) a = alpm_list_add(a, strdup(i->data));
@@ -55,6 +55,15 @@ int rc_op_clean(void)
 }
 
 /* ---------- -Ps ---------- */
+
+static size_t u8len(const char *s)
+{
+	size_t n = 0;
+	for(; *s; s++) {
+		if(((unsigned char)*s & 0xC0) != 0x80) n++;
+	}
+	return n;
+}
 
 int rc_op_stats(void)
 {
@@ -84,21 +93,32 @@ int rc_op_stats(void)
 			}
 		}
 	}
-	printf("%s==> rcyay v%s – Paketstatistik%s\n", config->colstr.title, RCYAY_VERSION,
-			config->colstr.nocolor);
-	printf(" Installierte Pakete         : %zu\n", total);
-	printf(" ausdrücklich installiert    : %zu\n", expl);
-	printf(" als Abhängigkeit            : %zu\n", deps);
-	printf(" fremd (AUR/lokal gebaut)    : %zu\n", nforeign);
-	hs = humanize_size(size, '\0', 2, &unit);
-	printf(" Gesamtgröße                 : %.2f %s\n", hs, unit);
-	hs = humanize_size(fsize, '\0', 2, &unit);
-	printf(" davon fremde Pakete         : %.2f %s\n", hs, unit);
-	printf(" Repos                       :");
-	for(alpm_list_t *i = alpm_get_syncdbs(R.handle); i; i = i->next) {
-		printf(" %s", alpm_db_get_name(i->data));
+	{
+		const char *lab[] = { _("Installed packages"), _("Explicitly installed"),
+			_("Installed as dependency"), _("Foreign (AUR/locally built)"), _("Total size"),
+			_("Size of foreign packages"), _("Repositories") };
+		size_t w = 0;
+		for(size_t k = 0; k < sizeof(lab) / sizeof(lab[0]); k++) {
+			if(u8len(lab[k]) > w) w = u8len(lab[k]);
+		}
+#define LAB(k) printf(" %s%*s : ", lab[k], (int)(w - u8len(lab[k])), "")
+		printf(_("%s==> rcyay v%s - package statistics%s\n"), config->colstr.title, RCYAY_VERSION,
+				config->colstr.nocolor);
+		LAB(0); printf("%zu\n", total);
+		LAB(1); printf("%zu\n", expl);
+		LAB(2); printf("%zu\n", deps);
+		LAB(3); printf("%zu\n", nforeign);
+		hs = humanize_size(size, '\0', 2, &unit);
+		LAB(4); printf("%.2f %s\n", hs, unit);
+		hs = humanize_size(fsize, '\0', 2, &unit);
+		LAB(5); printf("%.2f %s\n", hs, unit);
+		LAB(6);
+#undef LAB
 	}
-	printf("\n%s==> Zehn größte Pakete%s\n", config->colstr.title, config->colstr.nocolor);
+	for(alpm_list_t *i = alpm_get_syncdbs(R.handle); i; i = i->next) {
+		printf("%s ", alpm_db_get_name(i->data));
+	}
+	printf(_("\n%s==> Ten biggest packages%s\n"), config->colstr.title, config->colstr.nocolor);
 	for(int k = 0; k < 10 && big[k]; k++) {
 		hs = humanize_size(alpm_pkg_get_isize(big[k]), '\0', 2, &unit);
 		printf(" %-30s %8.2f %s\n", alpm_pkg_get_name(big[k]), hs, unit);
@@ -153,14 +173,40 @@ static int parse_selection(const char *line, int count, char *sel)
 	return any ? 0 : 1;
 }
 
+typedef struct {
+	alpm_pkg_t *repo;
+	aur_pkg_t *aur;
+} entry_t;
+
+static void print_entry(entry_t *e, int n, alpm_db_t *local, unsigned short cols)
+{
+	const colstr_t *c = &config->colstr;
+	if(e->aur) {
+		alpm_list_t one = { e->aur, NULL, NULL };
+		one.prev = &one;
+		rc_print_aur_search(&one, 0, 1, n);
+		return;
+	}
+	printf("%s%d%s %s%s/%s%s %s%s%s", c->meta, n, c->nocolor, c->repo,
+			alpm_db_get_name(alpm_pkg_get_db(e->repo)), c->title, alpm_pkg_get_name(e->repo),
+			c->version, alpm_pkg_get_version(e->repo), c->nocolor);
+	if(alpm_db_get_pkg(local, alpm_pkg_get_name(e->repo))) {
+		printf(" %s[%s]%s", c->meta, P_("installed"), c->nocolor);
+	}
+	fputs("\n    ", stdout);
+	indentprint(alpm_pkg_get_desc(e->repo) ? alpm_pkg_get_desc(e->repo) : "", 4, cols);
+	fputc('\n', stdout);
+}
+
 int rc_op_interactive(void)
 {
-	alpm_list_t *repo = NULL, *aur = NULL, *choices = NULL, *sel_targets = NULL;
+	alpm_list_t *repo = NULL, *aur = NULL, *sel_targets = NULL;
 	const colstr_t *c = &config->colstr;
 	unsigned short cols = getcols();
 	alpm_db_t *local = alpm_get_localdb(R.handle);
-	int count, n, ret = 0;
-	char line[1024], *sel;
+	entry_t *E = NULL;
+	int count = 0, ret = 0;
+	char line[1024], *sel = NULL;
 
 	if(!R.aur_only) {
 		for(alpm_list_t *i = alpm_get_syncdbs(R.handle); i; i = i->next) {
@@ -178,46 +224,28 @@ int rc_op_interactive(void)
 	}
 	count = (int)(alpm_list_count(repo) + alpm_list_count(aur));
 	if(count == 0) {
-		rc_err("Keine Pakete gefunden.\n");
-		return 1;
+		rc_err(_("no packages found\n"));
+		ret = 1;
+		goto out;
 	}
-	/* Liste von unten nach oben nummerieren: 1 steht direkt über der Frage */
-	n = count;
-	{
-		alpm_list_t *raur = alpm_list_reverse(aur);
-		rc_print_aur_search(raur, 0, 1, n);
-		for(alpm_list_t *i = raur; i; i = i->next) {
-			char *t = NULL;
-			if(asprintf(&t, "aur/%s", ((aur_pkg_t *)i->data)->name) >= 0) {
-				choices = alpm_list_add(choices, t);
-			}
-		}
-		n -= (int)alpm_list_count(raur);
-		alpm_list_free(raur);
+	/* Nummer 1 = bester Treffer (Repos vor AUR, AUR nach --sortby);
+	 * BottomUp: 1 steht unten direkt über der Frage */
+	E = calloc((size_t)count, sizeof(*E));
+	if(!E) {
+		ret = 1;
+		goto out;
 	}
 	{
-		alpm_list_t *rrepo = alpm_list_reverse(repo);
-		for(alpm_list_t *i = rrepo; i; i = i->next, n--) {
-			alpm_pkg_t *p = i->data;
-			alpm_pkg_t *lp = alpm_db_get_pkg(local, alpm_pkg_get_name(p));
-			char *t = NULL;
-			printf("%s%d%s %s%s/%s%s %s%s%s", c->meta, n, c->nocolor, c->repo,
-					alpm_db_get_name(alpm_pkg_get_db(p)), c->title, alpm_pkg_get_name(p),
-					c->version, alpm_pkg_get_version(p), c->nocolor);
-			if(lp) {
-				printf(" %s[installiert]%s", c->meta, c->nocolor);
-			}
-			fputs("\n    ", stdout);
-			indentprint(alpm_pkg_get_desc(p) ? alpm_pkg_get_desc(p) : "", 4, cols);
-			fputc('\n', stdout);
-			if(asprintf(&t, "%s/%s", alpm_db_get_name(alpm_pkg_get_db(p)), alpm_pkg_get_name(p)) >= 0) {
-				choices = alpm_list_add(choices, t);
-			}
-		}
-		alpm_list_free(rrepo);
+		int k = 0;
+		for(alpm_list_t *i = repo; i; i = i->next) E[k++].repo = i->data;
+		for(alpm_list_t *i = aur; i; i = i->next) E[k++].aur = i->data;
 	}
-	/* choices[0] gehört zur höchsten Nummer */
-	printf("%s==>%s Pakete zum Installieren (z. B. 1 2 3, 1-3, ^4):\n%s==>%s ", c->title, c->nocolor,
+	if(R.bottomup) {
+		for(int k = count; k >= 1; k--) print_entry(&E[k - 1], k, local, cols);
+	} else {
+		for(int k = 1; k <= count; k++) print_entry(&E[k - 1], k, local, cols);
+	}
+	printf(_("%s==>%s Packages to install (eg: 1 2 3, 1-3 or ^4):\n%s==>%s "), c->title, c->nocolor,
 			c->title, c->nocolor);
 	fflush(stdout);
 	if(!safe_fgets_stdin(line, sizeof(line))) {
@@ -231,46 +259,57 @@ int rc_op_interactive(void)
 	}
 	ret = parse_selection(line, count, sel);
 	if(ret != 0) {
-		if(ret < 0) rc_err("Ungültige Auswahl\n");
-		free(sel);
+		if(ret < 0) {
+			rc_err(_("invalid selection\n"));
+		}
 		ret = ret < 0 ? 1 : 0;
 		goto out;
 	}
-	n = count;
-	for(alpm_list_t *i = choices; i; i = i->next, n--) {
-		if(sel[n]) {
-			sel_targets = alpm_list_add(sel_targets, strdup(i->data));
+	for(int k = 1; k <= count; k++) {
+		char *t = NULL;
+		if(!sel[k]) {
+			continue;
+		}
+		if(E[k - 1].aur) {
+			if(asprintf(&t, "aur/%s", E[k - 1].aur->name) < 0) t = NULL;
+		} else if(asprintf(&t, "%s/%s", alpm_db_get_name(alpm_pkg_get_db(E[k - 1].repo)),
+					alpm_pkg_get_name(E[k - 1].repo)) < 0) {
+			t = NULL;
+		}
+		if(t) {
+			sel_targets = alpm_list_add(sel_targets, t);
 		}
 	}
-	free(sel);
 	FREELIST(R.targets);
 	R.targets = sel_targets;
 	R.op = 'S';
 	R.tokens = alpm_list_add(R.tokens, strdup("-S"));
 	ret = rc_op_sync();
 out:
+	free(sel);
+	free(E);
 	alpm_list_free(repo);
 	aur_pkglist_free(aur);
-	FREELIST(choices);
 	return ret;
 }
 
 void rc_usage(void)
 {
-	printf("rcyay v%s – pacman mit AUR (UsrsideOS)\n\n", RCYAY_VERSION);
-	printf("Zusätzlich zu allen pacman-Operationen:\n");
-	printf("    rcyay                      = rcyay -Syu (Repos und AUR aktualisieren)\n");
-	printf("    rcyay WORT …               Repos+AUR durchsuchen und Auswahl installieren\n");
-	printf("    rcyay -S PAKET …           Repo-Paket oder AUR-Paket (mit Abhängigkeiten bauen)\n");
-	printf("    rcyay -Ss/-Si WORT         auch im AUR suchen bzw. Infos (aur/…)\n");
-	printf("    rcyay -Syu | -Sua          Repos+AUR aktualisieren | nur AUR\n");
-	printf("    rcyay -G PAKET | -Gp PAKET Bauordner holen | PKGBUILD anzeigen\n");
-	printf("    rcyay -Yc                  unnötige Abhängigkeiten entfernen\n");
-	printf("    rcyay -Ps                  Paketstatistik\n\n");
-	printf("rcyay-Optionen:\n");
-	printf("    -a, --aur      nur AUR          --repo          nur Repos\n");
-	printf("    --devel        VCS-Pakete (-git …) neu bauen, wenn pkgver() neuer ist\n");
-	printf("    --removemake / --noremovemake  Bauabhängigkeiten danach entfernen (Standard: ja)\n");
-	printf("    --nodiff       PKGBUILD/Diff nicht anzeigen   --nocheck  check() überspringen\n");
-	printf("    --aururl URL   --builddir DIR   --rcyayconf DATEI (Standard %s)\n\n", RCYAY_CONF);
+	printf(_("rcyay v%s - pacman with AUR support (UsrsideOS)\n\n"), RCYAY_VERSION);
+	fputs(_("In addition to all pacman operations:\n"), stdout);
+	fputs(_("    rcyay                      same as rcyay -Syu (upgrade repos and AUR)\n"), stdout);
+	fputs(_("    rcyay WORD ...             search repos+AUR and install a selection\n"), stdout);
+	fputs(_("    rcyay -S PACKAGE ...       repo package or AUR package (built with dependencies)\n"), stdout);
+	fputs(_("    rcyay -Ss/-Si WORD         also search the AUR / show AUR info (aur/...)\n"), stdout);
+	fputs(_("    rcyay -Syu | -Sua          upgrade repos+AUR | AUR only\n"), stdout);
+	fputs(_("    rcyay -G PKG | -Gp PKG     download build files | print PKGBUILD\n"), stdout);
+	fputs(_("    rcyay -Yc                  remove unneeded dependencies\n"), stdout);
+	fputs(_("    rcyay -Ps                  package statistics\n\n"), stdout);
+	fputs(_("rcyay options:\n"), stdout);
+	fputs(_("    -a, --aur      AUR only         --repo          repositories only\n"), stdout);
+	fputs(_("    --devel        rebuild VCS packages (-git ...) when pkgver() is newer\n"), stdout);
+	fputs(_("    --removemake / --noremovemake  remove make dependencies afterwards (default: yes)\n"), stdout);
+	fputs(_("    --nodiff       do not show PKGBUILD/diff      --nocheck  skip check()\n"), stdout);
+	fputs("    --sortby votes|popularity|name|modified       --topdown / --bottomup\n", stdout);
+	printf(_("    --aururl URL   --builddir DIR   --rcyayconf FILE (default %s)\n\n"), RCYAY_CONF);
 }

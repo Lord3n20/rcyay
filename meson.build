@@ -315,6 +315,7 @@ if get_option('i18n')
   i18n = import('i18n')
   subdir('lib/libalpm/po')
   subdir('src/pacman/po')
+  subdir('src/rcyay/po')
   subdir('scripts/po')
 endif
 
@@ -383,6 +384,7 @@ libaur_includes = include_directories('lib/libaur')
 libaur = static_library(
   'aur',
   libaur_sources,
+  c_args : get_option('i18n') ? ['-DAUR_NLS'] : [],
   include_directories : includes,
   dependencies : [libcurl, libarchive],
   install : false)
@@ -464,6 +466,8 @@ configure_file(
   install_dir : join_paths(SYSCONFDIR, 'makepkg.conf.d/'))
 
 install_emptydir(join_paths(SYSCONFDIR, 'makepkg.d/'))
+
+install_data('etc/rcyay.conf', install_dir : SYSCONFDIR)
 
 configure_file(
   input : 'etc/pacman.conf.in',

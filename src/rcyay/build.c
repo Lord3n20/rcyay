@@ -112,14 +112,14 @@ static aur_pkg_t *cb_choose(void *ud, const char *dep, alpm_list_t *cands)
 	if(R.noconfirm || !isatty(fileno(stdin))) {
 		return def;
 	}
-	rc_msg("Es gibt %d AUR-Anbieter für %s:\n", count, dep);
+	rc_msg(_("There are %d AUR providers available for %s:\n"), count, dep);
 	for(alpm_list_t *i = cands; i; i = i->next, n++) {
 		aur_pkg_t *p = i->data;
-		printf("   %d) %s %s (+%ld)%s\n", n, p->name, p->version, p->votes, p == def ? " [Standard]" : "");
+		printf("   %d) %s %s (+%ld)%s\n", n, p->name, p->version, p->votes, p == def ? _(" [default]") : "");
 	}
 	for(;;) {
 		char buf[64];
-		printf("Auswahl (Eingabe = Standard): ");
+		fputs(_("Enter a number (Enter = default): "), stdout);
 		fflush(stdout);
 		if(!safe_fgets_stdin(buf, sizeof(buf))) {
 			return def;
@@ -143,7 +143,7 @@ static aur_srcinfo_t *cb_srcinfo(void *ud, aur_pkg_t *pkg, char **err)
 	(void)ud;
 
 	if(!pkg->pkgbase[0] || pkg->pkgbase[0] == '.' || strchr(pkg->pkgbase, '/')) {
-		if(asprintf(err, "ungültiger pkgbase '%s'", pkg->pkgbase) < 0) *err = NULL;
+		if(asprintf(err, _("invalid pkgbase '%s'"), pkg->pkgbase) < 0) *err = NULL;
 		return NULL;
 	}
 	j = calloc(1, sizeof(*j));
@@ -164,10 +164,10 @@ static aur_srcinfo_t *cb_srcinfo(void *ud, aur_pkg_t *pkg, char **err)
 	url = aur_snapshot_url(R.ctx, pkg);
 	if(!j->neu || !j->tarball || !j->snap || !j->dir || !url) {
 		free(url);
-		*err = strdup("out of memory");
+		*err = strdup(_("out of memory"));
 		goto fail;
 	}
-	printf(" Hole %s ...\n", pkg->pkgbase);
+	printf(_(" Downloading %s ...\n"), pkg->pkgbase);
 	fflush(stdout);
 	if(aur_http_download(R.ctx, url, j->tarball, &status) != 0) {
 		*err = strdup(R.ctx->error);
@@ -187,7 +187,7 @@ static aur_srcinfo_t *cb_srcinfo(void *ud, aur_pkg_t *pkg, char **err)
 		goto fail;
 	}
 	if(strcmp(res->pkgbase, pkg->pkgbase) != 0) {
-		if(asprintf(err, "pkgbase in .SRCINFO (%s) passt nicht zu %s", res->pkgbase, pkg->pkgbase) < 0) {
+		if(asprintf(err, _("pkgbase in .SRCINFO (%s) does not match %s"), res->pkgbase, pkg->pkgbase) < 0) {
 			*err = NULL;
 		}
 		aur_srcinfo_free(res);
@@ -231,22 +231,22 @@ static void review(job_t *j)
 			j->snap, j->neu, NULL };
 		const char *argv_diff[] = { "diff", "-ruN", j->snap, j->neu, NULL };
 		int r;
-		printf("%s==> Änderungen in %s seit dem letzten Bau%s\n", config->colstr.title,
-				j->b->pkgbase, config->colstr.nocolor);
+		fputs(config->colstr.title, stdout);
+		printf(_("==> Changes in %s since the last build%s\n"), j->b->pkgbase, config->colstr.nocolor);
 		if(rc_have_program("git")) {
 			r = rc_run(argv_git, NULL, (uid_t)-1, (gid_t)-1, NULL, NULL);
 		} else {
 			r = rc_run(argv_diff, NULL, (uid_t)-1, (gid_t)-1, NULL, NULL);
 		}
 		if(r == 0) {
-			printf("   (keine Änderungen)\n");
+			fputs(_("   (no changes)\n"), stdout);
 		}
 	} else {
 		DIR *d;
 		char *p = path2(j->neu, "PKGBUILD", NULL), *t = NULL;
-		if(asprintf(&t, "PKGBUILD von %s (neu)", j->b->pkgbase) < 0) t = NULL;
+		if(asprintf(&t, _("PKGBUILD of %s (new)"), j->b->pkgbase) < 0) t = NULL;
 		if(show_file(p, t ? t : "PKGBUILD") != 0) {
-			rc_warn("%s: PKGBUILD fehlt\n", j->b->pkgbase);
+			rc_warn(_("%s: PKGBUILD is missing\n"), j->b->pkgbase);
 		}
 		free(p);
 		free(t);
@@ -369,7 +369,7 @@ static int build_job(job_t *j, alpm_list_t **files)
 	int r;
 	*files = NULL;
 
-	rc_msg("Baue %s %s ...\n", j->b->pkgbase, j->b->srcinfo->version);
+	rc_msg(_("Building %s %s ...\n"), j->b->pkgbase, j->b->srcinfo->version);
 	if(prepare_dir(j) != 0) {
 		return -1;
 	}
@@ -378,7 +378,7 @@ static int build_job(job_t *j, alpm_list_t **files)
 		char *err = NULL;
 		r = makepkg(j, "-od", NULL, NULL);
 		if(r != 0) {
-			rc_err("makepkg -od für %s fehlgeschlagen (%d)\n", j->b->pkgbase, r);
+			rc_err(_("makepkg -od failed for %s (%d)\n"), j->b->pkgbase, r);
 			return -1;
 		}
 		r = makepkg(j, "--printsrcinfo", NULL, &out);
@@ -391,23 +391,23 @@ static int build_job(job_t *j, alpm_list_t **files)
 			return -1;
 		}
 		if(installed_version_cmp(j, si->version) <= 0) {
-			printf(" %s ist aktuell (%s) -- übersprungen\n", j->b->pkgbase, si->version);
+			printf(_(" %s is up to date (%s) -- skipping\n"), j->b->pkgbase, si->version);
 			aur_srcinfo_free(si);
 			return 1;
 		}
-		printf(" %s: neue Version %s\n", j->b->pkgbase, si->version);
+		printf(_(" %s: new version %s\n"), j->b->pkgbase, si->version);
 		aur_srcinfo_free(si);
 		r = makepkg(j, "-fe", NULL, NULL);
 	} else {
 		r = makepkg(j, "-f", NULL, NULL);
 	}
 	if(r != 0) {
-		rc_err("Bau von %s fehlgeschlagen (makepkg: %d)\n", j->b->pkgbase, r);
+		rc_err(_("failed to build %s (makepkg: %d)\n"), j->b->pkgbase, r);
 		return -1;
 	}
 	r = makepkg(j, "--packagelist", NULL, &out);
 	if(r != 0 || !out) {
-		rc_err("makepkg --packagelist für %s fehlgeschlagen\n", j->b->pkgbase);
+		rc_err(_("makepkg --packagelist failed for %s\n"), j->b->pkgbase);
 		free(out);
 		return -1;
 	}
@@ -415,7 +415,7 @@ static int build_job(job_t *j, alpm_list_t **files)
 		char *name = pkgname_from_file(line);
 		if(name && alpm_list_find_str(j->b->pkgnames, name)) {
 			if(access(line, R_OK) != 0) {
-				rc_err("Paketdatei fehlt: %s\n", line);
+				rc_err(_("package file is missing: %s\n"), line);
 				free(name);
 				free(out);
 				FREELIST(*files);
@@ -427,7 +427,7 @@ static int build_job(job_t *j, alpm_list_t **files)
 	}
 	free(out);
 	if(alpm_list_count(*files) != alpm_list_count(j->b->pkgnames)) {
-		rc_err("%s: nicht alle Pakete gebaut\n", j->b->pkgbase);
+		rc_err(_("%s: not all packages were built\n"), j->b->pkgbase);
 		FREELIST(*files);
 		return -1;
 	}
@@ -462,13 +462,13 @@ static void show_plan(aur_plan_t *plan)
 {
 	const colstr_t *c = &config->colstr;
 	if(plan->repo) {
-		printf("\n%sRepo-Abhängigkeiten (%zu):%s", c->title, alpm_list_count(plan->repo), c->nocolor);
+		printf(_("\n%sRepo dependencies (%zu):%s"), c->title, alpm_list_count(plan->repo), c->nocolor);
 		for(alpm_list_t *i = plan->repo; i; i = i->next) {
-			printf(" %s%s", (char *)i->data, alpm_list_find_str(plan->repo_make, i->data) ? "[Bau]" : "");
+			printf(" %s%s", (char *)i->data, alpm_list_find_str(plan->repo_make, i->data) ? _("[make]") : "");
 		}
 		printf("\n");
 	}
-	printf("\n%sAUR-Pakete (%zu):%s\n", c->title, alpm_list_count(plan->bases), c->nocolor);
+	printf(_("\n%sAUR packages (%zu):%s\n"), c->title, alpm_list_count(plan->bases), c->nocolor);
 	for(alpm_list_t *i = plan->bases; i; i = i->next) {
 		aur_base_t *b = i->data;
 		printf("   %s%s%s %s%s%s", c->title, b->pkgbase, c->nocolor, c->version,
@@ -485,7 +485,7 @@ static void show_plan(aur_plan_t *plan)
 			for(alpm_list_t *k = b->pkgnames; k; k = k->next) {
 				if(!aur_plan_is_makeonly(plan, b, k->data)) allmake = 0;
 			}
-			printf(" %s[%s]%s", c->meta, allmake ? "Bau, wird wieder entfernt" : "Abhängigkeit", c->nocolor);
+			printf(" %s[%s]%s", c->meta, allmake ? _("make, removed afterwards") : _("dependency"), c->nocolor);
 		}
 		printf("\n");
 	}
@@ -509,7 +509,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		alpm_pkg_t *lp = alpm_db_get_pkg(alpm_get_localdb(R.handle), i->data);
 		if(R.needed && p && lp && alpm_pkg_vercmp(p->version, alpm_pkg_get_version(lp)) <= 0 &&
 				!(R.devel && rc_is_vcs(p->name))) {
-			rc_warn("%s-%s ist aktuell -- übersprungen\n", p->name, alpm_pkg_get_version(lp));
+			rc_warn(_("%s-%s is up to date -- skipping\n"), p->name, alpm_pkg_get_version(lp));
 			continue;
 		}
 		all = aur_list_add_unique(all, i->data);
@@ -518,7 +518,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	for(alpm_list_t *i = upgrades; i; i = i->next) all = aur_list_add_unique(all, i->data);
 	for(alpm_list_t *i = devel; i; i = i->next) all = aur_list_add_unique(all, i->data);
 	if(!all) {
-		printf(" Es gibt nichts zu tun\n");
+		fputs(_(" there is nothing to do\n"), stdout);
 		return 0;
 	}
 
@@ -526,7 +526,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	d2 = path2(R.builddir, ".snap", NULL);
 	if(!d1 || !d2 || rc_mkdir_p(R.builddir, 0755) != 0 || rc_mkdir_p(d1, 0755) != 0 ||
 			rc_mkdir_p(d2, 0755) != 0) {
-		rc_err("Bauordner %s nicht anlegbar: %s\n", R.builddir, strerror(errno));
+		rc_err(_("cannot create build directory %s: %s\n"), R.builddir, strerror(errno));
 		goto done;
 	}
 	if(rc_build_user(&build_uid, &build_gid, &build_home) != 0) {
@@ -540,7 +540,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		chmod(R.builddir, 0755);
 	}
 
-	rc_msg("Löse Abhängigkeiten auf...\n");
+	rc_msg(_("Resolving dependencies...\n"));
 	res.arch = R.arch;
 	res.nocheck = R.nocheck;
 	res.installed = cb_installed;
@@ -576,7 +576,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	}
 
 	show_plan(plan);
-	if(!rc_confirm(1, "Mit dem Bau fortfahren?")) {
+	if(!rc_confirm(1, _("Proceed with building?"))) {
 		ret = 1;
 		goto done;
 	}
@@ -585,7 +585,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		for(alpm_list_t *i = plan->bases; i; i = i->next) {
 			review(job_for(((aur_base_t *)i->data)->pkgbase));
 		}
-		if(!rc_confirm(1, "PKGBUILDs geprüft – bauen und installieren?")) {
+		if(!rc_confirm(1, _("PKGBUILDs reviewed - build and install?"))) {
 			ret = 1;
 			goto done;
 		}
@@ -603,11 +603,11 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 
 	if(plan->repo) {
 		alpm_list_t *pre = rc_strlist("-S", "--asdeps", "--needed", NULL);
-		rc_msg("Installiere Repo-Abhängigkeiten...\n");
+		rc_msg(_("Installing repo dependencies...\n"));
 		ret = pacman_do(pre, 1, plan->repo);
 		FREELIST(pre);
 		if(ret != 0) {
-			rc_err("Installation der Repo-Abhängigkeiten fehlgeschlagen\n");
+			rc_err(_("failed to install repo dependencies\n"));
 			goto done;
 		}
 		for(alpm_list_t *i = plan->repo_make; i; i = i->next) {
@@ -631,12 +631,12 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		pre = rc_strlist("-U", NULL);
 		if(R.asdeps) pre = alpm_list_add(pre, strdup("--asdeps"));
 		if(R.asexplicit) pre = alpm_list_add(pre, strdup("--asexplicit"));
-		rc_msg("Installiere %s...\n", b->pkgbase);
+		rc_msg(_("Installing %s...\n"), b->pkgbase);
 		r = pacman_do(pre, 1, files);
 		FREELIST(pre);
 		FREELIST(files);
 		if(r != 0) {
-			rc_err("Installation von %s fehlgeschlagen\n", b->pkgbase);
+			rc_err(_("failed to install %s\n"), b->pkgbase);
 			ret = 1;
 			break;
 		}
@@ -654,7 +654,7 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 		if(asdeps) {
 			alpm_list_t *dpre = rc_strlist("-D", "--asdeps", NULL);
 			if(pacman_do(dpre, 0, asdeps) != 0) {
-				rc_warn("Installationsgrund für %s nicht gesetzt\n", b->pkgbase);
+				rc_warn(_("could not set install reason for %s\n"), b->pkgbase);
 			}
 			FREELIST(dpre);
 			FREELIST(asdeps);
@@ -668,9 +668,9 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 
 	if(installed_by_us && R.removemake) {
 		alpm_list_t *pre = rc_strlist("-R", "-s", "-u", "--noconfirm", NULL);
-		rc_msg("Entferne Bauabhängigkeiten...\n");
+		rc_msg(_("Removing make dependencies...\n"));
 		if(pacman_do(pre, 0, installed_by_us) != 0) {
-			rc_warn("Bauabhängigkeiten konnten nicht (alle) entfernt werden\n");
+			rc_warn(_("could not remove (all) make dependencies\n"));
 		}
 		FREELIST(pre);
 	}

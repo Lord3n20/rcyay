@@ -20,6 +20,19 @@
 
 #define RCYAY_VERSION "0.1.0"
 
+/* Übersetzungen: rcyay-eigene Texte in der Domäne "rcyay" (src/rcyay/po),
+ * pacman-Texte weiter über gettext() aus der Domäne "pacman". */
+#if defined(ENABLE_NLS)
+#include <libintl.h>
+#undef _
+#define _(s) dgettext("rcyay", s)
+#define P_(s) gettext(s)
+#else
+#undef _
+#define _(s) (s)
+#define P_(s) (s)
+#endif
+
 typedef struct {
 	char *self;               /* Pfad des eigenen Programms */
 	char *myname;             /* argv[0] */
@@ -63,6 +76,11 @@ typedef struct {
 	alpm_list_t *aurcache;    /* aur_pkg_t*: RPC-Ergebnisse */
 	alpm_list_t *aurmiss;     /* char*: nicht im AUR */
 	alpm_list_t *provcache;   /* char*: Namen, für die provides schon gesucht wurde */
+
+	/* Suche */
+	char *sortby;             /* votes, popularity, name, modified */
+	char *conf_sortby;
+	int bottomup;             /* 1 = beste Treffer unten (Standard wie yay) */
 } rcyay_t;
 
 extern rcyay_t R;

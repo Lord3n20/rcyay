@@ -1,0 +1,10 @@
+pkgname=rc-chain-c-old
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Kette Ende (alt, zu alt)"
+provides=('rc-chain-c=1.0')
+conflicts=(rc-chain-c)
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

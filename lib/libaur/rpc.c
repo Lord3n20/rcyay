@@ -26,6 +26,7 @@
 #include "rpc.h"
 #include "json.h"
 #include "aurutil.h"
+#include "aurintl.h"
 
 /* Maximale URL-Länge einer info-Anfrage (aurweb lehnt sehr lange URIs ab) */
 #define AUR_MAX_URI 4000
@@ -152,15 +153,15 @@ int aur_rpc_parse(const char *json, size_t len, alpm_list_t **out, char **err)
 	}
 	root = aur_json_parse(json, len, &perr);
 	if(!root) {
-		return set_err(err, "invalid JSON from AUR: ", perr);
+		return set_err(err, _("invalid JSON from AUR: "), perr);
 	}
 	type = aur_json_get_str(root, "type");
 	if(!type) {
 		aur_json_free(root);
-		return set_err(err, "invalid AUR response: ", "no type");
+		return set_err(err, _("invalid AUR response: "), _("no type"));
 	}
 	if(strcmp(type, "error") == 0) {
-		set_err(err, "AUR: ", aur_json_get_str(root, "error"));
+		set_err(err, _("AUR: "), aur_json_get_str(root, "error"));
 		aur_json_free(root);
 		return -1;
 	}
@@ -268,7 +269,7 @@ static int do_get(aur_ctx_t *ctx, const char *url, curl_write_callback cb, void 
 		*status = 0;
 	}
 	if(curl_ready() != 0 || !(c = curl_easy_init())) {
-		ctx_err(ctx, "curl initialisation failed");
+		ctx_err(ctx, _("curl initialisation failed"));
 		return -1;
 	}
 	curl_easy_setopt(c, CURLOPT_URL, url);
@@ -295,7 +296,7 @@ static int do_get(aur_ctx_t *ctx, const char *url, curl_write_callback cb, void 
 		*status = code;
 	}
 	if(code != 200) {
-		ctx_err(ctx, "%s: HTTP %ld", url, code);
+		ctx_err(ctx, _("%s: HTTP %ld"), url, code);
 		return -1;
 	}
 	return 0;
@@ -384,7 +385,7 @@ static int rpc_request(aur_ctx_t *ctx, const char *url, alpm_list_t **out)
 	}
 	ret = aur_rpc_parse(body, len, out, &err);
 	if(ret != 0) {
-		ctx_err(ctx, "%s", err ? err : "invalid AUR response");
+		ctx_err(ctx, "%s", err ? err : _("invalid AUR response"));
 	}
 	free(err);
 	free(body);
@@ -438,7 +439,7 @@ int aur_info(aur_ctx_t *ctx, alpm_list_t *names, alpm_list_t **out)
 	*out = all;
 	return 0;
 oom:
-	ctx_err(ctx, "out of memory");
+	ctx_err(ctx, _("out of memory"));
 	aur_pkglist_free(all);
 	return -1;
 }
@@ -451,7 +452,7 @@ int aur_search(aur_ctx_t *ctx, const char *term, const char *by, alpm_list_t **o
 	if(!e || !eb || asprintf(&url, "%s/rpc/v5/search/%s?by=%s", ctx->baseurl, e, eb) < 0) {
 		free(e);
 		free(eb);
-		ctx_err(ctx, "out of memory");
+		ctx_err(ctx, _("out of memory"));
 		return -1;
 	}
 	free(e);
@@ -567,8 +568,10 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 		snprintf(err, errlen, "%s: %s", archive, strerror(errno));
 		return -1;
 	}
-	cwd = open(".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
-	if(cwd < 0 || chdir(dest) != 0) {
+	/* O_PATH: klappt auch, wenn das aktuelle Verzeichnis nicht lesbar ist
+	 * (z. B. runuser/sudo -u aus /root heraus) */
+	cwd = open(".", O_PATH | O_DIRECTORY | O_CLOEXEC);
+	if(chdir(dest) != 0) {
 		snprintf(err, errlen, "%s: %s", dest, strerror(errno));
 		if(cwd >= 0) close(cwd);
 		free(absarchive);
@@ -596,7 +599,7 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 
 		rel = strip_path(archive_entry_pathname(entry), strip, &unsafe);
 		if(unsafe) {
-			snprintf(err, errlen, "%s: unsafe path %s", archive, archive_entry_pathname(entry));
+			snprintf(err, errlen, _("%s: unsafe path %s"), archive, archive_entry_pathname(entry));
 			ret = -1;
 			break;
 		}
@@ -616,7 +619,7 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 			const char *hrel = strip_path(hl, strip, &unsafe);
 			if(!hrel || !(hfull = strdup(hrel))) {
 				free(full);
-				snprintf(err, errlen, "%s: unsafe hardlink %s", archive, hl);
+				snprintf(err, errlen, _("%s: unsafe hardlink %s"), archive, hl);
 				ret = -1;
 				break;
 			}
@@ -658,11 +661,15 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 done:
 	archive_read_free(a);
 	archive_write_free(ext);
-	if(fchdir(cwd) != 0 && ret == 0) {
-		snprintf(err, errlen, "fchdir: %s", strerror(errno));
+	if(cwd >= 0) {
+		if(fchdir(cwd) != 0 && ret == 0) {
+			snprintf(err, errlen, "fchdir: %s", strerror(errno));
+			ret = -1;
+		}
+		close(cwd);
+	} else if(chdir("/") != 0) {
 		ret = -1;
 	}
-	close(cwd);
 	free(absarchive);
 	return ret;
 }

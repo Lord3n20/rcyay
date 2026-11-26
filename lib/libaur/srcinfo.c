@@ -17,6 +17,7 @@
 
 #include "srcinfo.h"
 #include "aurutil.h"
+#include "aurintl.h"
 
 static void archval_free(void *p)
 {
@@ -99,7 +100,7 @@ static const struct fieldmap archfields[] = {
 static int set_err(char **err, int line, const char *msg, const char *extra)
 {
 	if(err) {
-		if(asprintf(err, "SRCINFO line %d: %s%s%s", line, msg,
+		if(asprintf(err, _("SRCINFO line %d: %s%s%s"), line, msg,
 					extra ? ": " : "", extra ? extra : "") < 0) {
 			*err = NULL;
 		}
@@ -165,7 +166,7 @@ aur_srcinfo_t *aur_srcinfo_parse(const char *text, char **err)
 		*err = NULL;
 	}
 	if(!text) {
-		set_err(err, 0, "no input", NULL);
+		set_err(err, 0, _("no input"), NULL);
 		return NULL;
 	}
 	si = calloc(1, sizeof(*si));
@@ -190,30 +191,30 @@ aur_srcinfo_t *aur_srcinfo_parse(const char *text, char **err)
 		}
 		eq = strchr(k, '=');
 		if(!eq) {
-			set_err(err, lineno, "missing '='", k);
+			set_err(err, lineno, _("missing '='"), k);
 			goto fail;
 		}
 		*eq = '\0';
 		v = trim(eq + 1);
 		k = trim(k);
 		if(*k == '\0') {
-			set_err(err, lineno, "empty key", NULL);
+			set_err(err, lineno, _("empty key"), NULL);
 			goto fail;
 		}
 
 		if(strcmp(k, "pkgbase") == 0) {
 			if(si->pkgbase || cur) {
-				set_err(err, lineno, "unexpected pkgbase", v);
+				set_err(err, lineno, _("unexpected pkgbase"), v);
 				goto fail;
 			}
 			si->pkgbase = strdup(v);
 		} else if(strcmp(k, "pkgname") == 0) {
 			if(!si->pkgbase) {
-				set_err(err, lineno, "pkgname before pkgbase", v);
+				set_err(err, lineno, _("pkgname before pkgbase"), v);
 				goto fail;
 			}
 			if(*v == '\0' || aur_srcinfo_find_pkg(si, v)) {
-				set_err(err, lineno, "invalid or duplicate pkgname", v);
+				set_err(err, lineno, _("invalid or duplicate pkgname"), v);
 				goto fail;
 			}
 			cur = calloc(1, sizeof(*cur));
@@ -223,7 +224,7 @@ aur_srcinfo_t *aur_srcinfo_parse(const char *text, char **err)
 			cur->name = strdup(v);
 			si->pkgs = alpm_list_add(si->pkgs, cur);
 		} else if(!si->pkgbase) {
-			set_err(err, lineno, "field before pkgbase", k);
+			set_err(err, lineno, _("field before pkgbase"), k);
 			goto fail;
 		} else if(!cur && strcmp(k, "pkgver") == 0) {
 			free(si->pkgver);
@@ -245,15 +246,15 @@ next:
 	}
 
 	if(!si->pkgbase) {
-		set_err(err, lineno, "no pkgbase", NULL);
+		set_err(err, lineno, _("no pkgbase"), NULL);
 		goto fail;
 	}
 	if(!si->pkgs) {
-		set_err(err, lineno, "no pkgname", NULL);
+		set_err(err, lineno, _("no pkgname"), NULL);
 		goto fail;
 	}
 	if(!si->pkgver || !si->pkgrel) {
-		set_err(err, lineno, "missing pkgver or pkgrel", NULL);
+		set_err(err, lineno, _("missing pkgver or pkgrel"), NULL);
 		goto fail;
 	}
 	if(asprintf(&si->version, "%s%s%s-%s",

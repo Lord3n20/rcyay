@@ -59,6 +59,8 @@ static void set(char **dst, const char *v)
 	*dst = strdup(v);
 }
 
+static int data_order = -1;
+
 static int conf_cb(const char *file, int line, const char *section,
 		char *key, char *value, void *data)
 {
@@ -66,15 +68,23 @@ static int conf_cb(const char *file, int line, const char *section,
 	if(!key && !value) {
 		/* neuer Abschnitt */
 		if(section && strcmp(section, "options") != 0 && strcmp(section, "rcyay") != 0) {
-			rc_warn("%s:%d: unbekannter Abschnitt [%s]\n", file, line, section);
+			rc_warn(_("%s:%d: unknown section [%s]\n"), file, line, section);
 		}
 		return 0;
 	}
 	if(!key) {
 		return 0;
 	}
+	if(!strcmp(key, "TopDown") && !value) {
+		data_order = 0;
+		return 0;
+	}
+	if(!strcmp(key, "BottomUp") && !value) {
+		data_order = 1;
+		return 0;
+	}
 	if(!value) {
-		rc_warn("%s:%d: %s ohne Wert\n", file, line, key);
+		rc_warn(_("%s:%d: %s without a value\n"), file, line, key);
 		return 0;
 	}
 	if(!strcmp(key, "AURURL")) set(&R.aururl, value);
@@ -84,12 +94,13 @@ static int conf_cb(const char *file, int line, const char *section,
 	else if(!strcmp(key, "Sudo")) set(&R.sudo, value);
 	else if(!strcmp(key, "Init")) set(&R.init, value);
 	else if(!strcmp(key, "Variant")) set(&R.variant, value);
+	else if(!strcmp(key, "SortBy")) set(&R.conf_sortby, value);
 	else if(!strcmp(key, "RemoveMake")) {
 		if(parse_bool(value, removemake) != 0) {
-			rc_warn("%s:%d: RemoveMake: yes oder no erwartet\n", file, line);
+			rc_warn(_("%s:%d: %s: expected yes or no\n"), file, line, key);
 		}
 	} else {
-		rc_warn("%s:%d: unbekannte Einstellung %s\n", file, line, key);
+		rc_warn(_("%s:%d: unknown setting %s\n"), file, line, key);
 	}
 	return 0;
 }
@@ -108,11 +119,17 @@ int rc_readconf(void)
 			return -1;
 		}
 	} else if(explicit) {
-		rc_err("Konfiguration %s nicht lesbar: %s\n", path, strerror(errno));
+		rc_err(_("cannot read configuration %s: %s\n"), path, strerror(errno));
 		return -1;
 	}
 	if(R.removemake < 0) {
 		R.removemake = removemake;
+	}
+	if(R.bottomup < 0) {
+		R.bottomup = data_order >= 0 ? data_order : 1;
+	}
+	if(!R.sortby) {
+		R.sortby = strdup(R.conf_sortby ? R.conf_sortby : "votes");
 	}
 	if(R.cli_aururl) set(&R.aururl, R.cli_aururl);
 	if(R.cli_builddir) set(&R.builddir, R.cli_builddir);

@@ -1,0 +1,785 @@
+# German translation of rcyay
+# Copyright (C) 2026 rcyay developers
+# This file is distributed under the same license as the rcyay package.
+msgid ""
+msgstr ""
+"Project-Id-Version: rcyay 0.1.0\n"
+"Report-Msgid-Bugs-To: rcyay\n"
+"PO-Revision-Date: 2026-11-26 12:00+0100\n"
+"Last-Translator: rcyay developers\n"
+"Language-Team: German\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: src/rcyay/aur.c:57
+#, c-format
+msgid "AUR query failed: %s\n"
+msgstr "AUR-Abfrage fehlgeschlagen: %s\n"
+
+#: src/rcyay/aur.c:101
+#, c-format
+msgid "AUR search for providers of %s failed: %s\n"
+msgstr "AUR-Suche nach Anbietern von %s fehlgeschlagen: %s\n"
+
+#: src/rcyay/aur.c:237 src/rcyay/aur.c:363
+#, c-format
+msgid "Out-of-date"
+msgstr "Veraltet"
+
+#: src/rcyay/aur.c:240 src/rcyay/aur.c:418
+#, c-format
+msgid "(orphaned)"
+msgstr "(verwaist)"
+
+#: src/rcyay/aur.c:271
+#, c-format
+msgid "AUR search failed: %s\n"
+msgstr "AUR-Suche fehlgeschlagen: %s\n"
+
+#: src/rcyay/aur.c:359
+#, c-format
+msgid "Repository"
+msgstr "Repositorium"
+
+#: src/rcyay/aur.c:359
+#, c-format
+msgid "Name"
+msgstr "Name"
+
+#: src/rcyay/aur.c:359
+#, c-format
+msgid "Package Base"
+msgstr "Paketbasis"
+
+#: src/rcyay/aur.c:359
+#, c-format
+msgid "Version"
+msgstr "Version"
+
+#: src/rcyay/aur.c:359
+#, c-format
+msgid "Description"
+msgstr "Beschreibung"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "URL"
+msgstr "URL"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "AUR URL"
+msgstr "AUR-URL"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "Groups"
+msgstr "Gruppen"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "Licenses"
+msgstr "Lizenzen"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "Provides"
+msgstr "Stellt bereit"
+
+#: src/rcyay/aur.c:360
+#, c-format
+msgid "Depends On"
+msgstr "Hängt ab von"
+
+#: src/rcyay/aur.c:361
+#, c-format
+msgid "Make Deps"
+msgstr "Bauabhängigkeiten"
+
+#: src/rcyay/aur.c:361
+#, c-format
+msgid "Check Deps"
+msgstr "Prüfabhängigkeiten"
+
+#: src/rcyay/aur.c:361
+#, c-format
+msgid "Optional Deps"
+msgstr "Optionale Abhängigkeiten"
+
+#: src/rcyay/aur.c:361
+#, c-format
+msgid "Conflicts With"
+msgstr "In Konflikt mit"
+
+#: src/rcyay/aur.c:362
+#, c-format
+msgid "Replaces"
+msgstr "Ersetzt"
+
+#: src/rcyay/aur.c:362
+#, c-format
+msgid "Keywords"
+msgstr "Schlagwörter"
+
+#: src/rcyay/aur.c:362
+#, c-format
+msgid "Maintainer"
+msgstr "Betreuer"
+
+#: src/rcyay/aur.c:362
+#, c-format
+msgid "Co-Maintainers"
+msgstr "Mitbetreuer"
+
+#: src/rcyay/aur.c:362
+#, c-format
+msgid "Votes"
+msgstr "Stimmen"
+
+#: src/rcyay/aur.c:363
+#, c-format
+msgid "Popularity"
+msgstr "Beliebtheit"
+
+#: src/rcyay/aur.c:363
+#, c-format
+msgid "First Submitted"
+msgstr "Eingereicht"
+
+#: src/rcyay/aur.c:363
+#, c-format
+msgid "Last Modified"
+msgstr "Zuletzt geändert"
+
+#: src/rcyay/aur.c:468
+#, c-format
+msgid "package '%s' was not found\n"
+msgstr "Paket '%s' wurde nicht gefunden\n"
+
+#: src/rcyay/aur.c:522
+#, c-format
+msgid "Searching AUR for updates...\n"
+msgstr "Suche nach AUR-Aktualisierungen...\n"
+
+#: src/rcyay/aur.c:538
+#, c-format
+msgid "%s: ignoring package upgrade (%s => %s)\n"
+msgstr "%s: Aktualisierung wird ignoriert (%s => %s)\n"
+
+#: src/rcyay/aur.c:556
+#, c-format
+msgid "not in the AUR (nor in any repository): %s\n"
+msgstr "Nicht im AUR (und in keinem Repo): %s\n"
+
+#: src/rcyay/aur.c:560
+#, c-format
+msgid " there is nothing to do in the AUR\n"
+msgstr " Im AUR gibt es nichts zu tun\n"
+
+#: src/rcyay/aur.c:646
+#, c-format
+msgid "package '%s' was not found in any repository\n"
+msgstr "Paket '%s' wurde in keinem Repo gefunden\n"
+
+#: src/rcyay/aur.c:654
+#, c-format
+msgid "package '%s' was found neither in the repositories nor in the AUR\n"
+msgstr "Paket '%s' wurde weder in den Repos noch im AUR gefunden\n"
+
+#: src/rcyay/aur.c:667
+#, c-format
+msgid "cannot fetch PKGBUILD of %s: %s\n"
+msgstr "PKGBUILD von %s nicht abrufbar: %s\n"
+
+#: src/rcyay/aur.c:682
+#, c-format
+msgid "download of %s failed: %s\n"
+msgstr "Download von %s fehlgeschlagen: %s\n"
+
+#: src/rcyay/aur.c:691
+#, c-format
+msgid "Updated:"
+msgstr "Aktualisiert:"
+
+#: src/rcyay/aur.c:691
+#, c-format
+msgid "Downloaded:"
+msgstr "Geholt:"
+
+#: src/rcyay/aur.c:709
+#, c-format
+msgid "no targets specified (rcyay -G PACKAGE ...)\n"
+msgstr "Keine Ziele angegeben (rcyay -G PAKET …)\n"
+
+#: src/rcyay/args.c:66
+#, c-format
+msgid "only one operation may be used at a time\n"
+msgstr "Es darf nur eine Operation gleichzeitig verwendet werden.\n"
+
+#: src/rcyay/args.c:110
+#, c-format
+msgid "unknown option: %s\n"
+msgstr "Unbekannte Option: %s\n"
+
+#: src/rcyay/args.c:137 src/rcyay/args.c:182
+#, c-format
+msgid "option --%s requires an argument\n"
+msgstr "Option --%s braucht ein Argument\n"
+
+#: src/rcyay/args.c:146
+#, c-format
+msgid "invalid argument '%s' for %s\n"
+msgstr "Ungültiges Argument '%s' für %s\n"
+
+#: src/rcyay/args.c:209
+#, c-format
+msgid "option -%c requires an argument\n"
+msgstr "Option -%c braucht ein Argument\n"
+
+#: src/rcyay/build.c:115
+#, c-format
+msgid "There are %d AUR providers available for %s:\n"
+msgstr "Es gibt %d AUR-Anbieter für %s:\n"
+
+#: src/rcyay/build.c:118
+#, c-format
+msgid " [default]"
+msgstr " [Standard]"
+
+#: src/rcyay/build.c:122
+#, c-format
+msgid "Enter a number (Enter = default): "
+msgstr "Auswahl (Eingabe = Standard): "
+
+#: src/rcyay/build.c:146
+#, c-format
+msgid "invalid pkgbase '%s'"
+msgstr "ungültiger pkgbase '%s'"
+
+#: src/rcyay/build.c:167 lib/libaur/rpc.c:442 lib/libaur/rpc.c:455
+#, c-format
+msgid "out of memory"
+msgstr "Speicher erschöpft"
+
+#: src/rcyay/build.c:170
+#, c-format
+msgid " Downloading %s ...\n"
+msgstr " Hole %s ...\n"
+
+#: src/rcyay/build.c:190
+#, c-format
+msgid "pkgbase in .SRCINFO (%s) does not match %s"
+msgstr "pkgbase in .SRCINFO (%s) passt nicht zu %s"
+
+#: src/rcyay/build.c:235
+#, c-format
+msgid "==> Changes in %s since the last build%s\n"
+msgstr "==> Änderungen in %s seit dem letzten Bau%s\n"
+
+#: src/rcyay/build.c:242
+#, c-format
+msgid "   (no changes)\n"
+msgstr "   (keine Änderungen)\n"
+
+#: src/rcyay/build.c:247
+#, c-format
+msgid "PKGBUILD of %s (new)"
+msgstr "PKGBUILD von %s (neu)"
+
+#: src/rcyay/build.c:249
+#, c-format
+msgid "%s: PKGBUILD is missing\n"
+msgstr "%s: PKGBUILD fehlt\n"
+
+#: src/rcyay/build.c:372
+#, c-format
+msgid "Building %s %s ...\n"
+msgstr "Baue %s %s ...\n"
+
+#: src/rcyay/build.c:381
+#, c-format
+msgid "makepkg -od failed for %s (%d)\n"
+msgstr "makepkg -od für %s fehlgeschlagen (%d)\n"
+
+#: src/rcyay/build.c:394
+#, c-format
+msgid " %s is up to date (%s) -- skipping\n"
+msgstr " %s ist aktuell (%s) -- übersprungen\n"
+
+#: src/rcyay/build.c:398
+#, c-format
+msgid " %s: new version %s\n"
+msgstr " %s: neue Version %s\n"
+
+#: src/rcyay/build.c:405
+#, c-format
+msgid "failed to build %s (makepkg: %d)\n"
+msgstr "Bau von %s fehlgeschlagen (makepkg: %d)\n"
+
+#: src/rcyay/build.c:410
+#, c-format
+msgid "makepkg --packagelist failed for %s\n"
+msgstr "makepkg --packagelist für %s fehlgeschlagen\n"
+
+#: src/rcyay/build.c:418
+#, c-format
+msgid "package file is missing: %s\n"
+msgstr "Paketdatei fehlt: %s\n"
+
+#: src/rcyay/build.c:430
+#, c-format
+msgid "%s: not all packages were built\n"
+msgstr "%s: nicht alle Pakete gebaut\n"
+
+#: src/rcyay/build.c:465
+#, c-format
+msgid "\n%sRepo dependencies (%zu):%s"
+msgstr "\n%sRepo-Abhängigkeiten (%zu):%s"
+
+#: src/rcyay/build.c:467
+#, c-format
+msgid "[make]"
+msgstr "[Bau]"
+
+#: src/rcyay/build.c:471
+#, c-format
+msgid "\n%sAUR packages (%zu):%s\n"
+msgstr "\n%sAUR-Pakete (%zu):%s\n"
+
+#: src/rcyay/build.c:488
+#, c-format
+msgid "make, removed afterwards"
+msgstr "Bau, wird wieder entfernt"
+
+#: src/rcyay/build.c:488
+#, c-format
+msgid "dependency"
+msgstr "Abhängigkeit"
+
+#: src/rcyay/build.c:512
+#, c-format
+msgid "%s-%s is up to date -- skipping\n"
+msgstr "%s-%s ist aktuell -- übersprungen\n"
+
+#: src/rcyay/build.c:521
+#, c-format
+msgid " there is nothing to do\n"
+msgstr " Es gibt nichts zu tun\n"
+
+#: src/rcyay/build.c:529
+#, c-format
+msgid "cannot create build directory %s: %s\n"
+msgstr "Bauordner %s nicht anlegbar: %s\n"
+
+#: src/rcyay/build.c:543
+#, c-format
+msgid "Resolving dependencies...\n"
+msgstr "Löse Abhängigkeiten auf...\n"
+
+#: src/rcyay/build.c:579
+#, c-format
+msgid "Proceed with building?"
+msgstr "Mit dem Bau fortfahren?"
+
+#: src/rcyay/build.c:588
+#, c-format
+msgid "PKGBUILDs reviewed - build and install?"
+msgstr "PKGBUILDs geprüft – bauen und installieren?"
+
+#: src/rcyay/build.c:606
+#, c-format
+msgid "Installing repo dependencies...\n"
+msgstr "Installiere Repo-Abhängigkeiten...\n"
+
+#: src/rcyay/build.c:610
+#, c-format
+msgid "failed to install repo dependencies\n"
+msgstr "Installation der Repo-Abhängigkeiten fehlgeschlagen\n"
+
+#: src/rcyay/build.c:634
+#, c-format
+msgid "Installing %s...\n"
+msgstr "Installiere %s...\n"
+
+#: src/rcyay/build.c:639
+#, c-format
+msgid "failed to install %s\n"
+msgstr "Installation von %s fehlgeschlagen\n"
+
+#: src/rcyay/build.c:657
+#, c-format
+msgid "could not set install reason for %s\n"
+msgstr "Installationsgrund für %s nicht gesetzt\n"
+
+#: src/rcyay/build.c:671
+#, c-format
+msgid "Removing make dependencies...\n"
+msgstr "Entferne Bauabhängigkeiten...\n"
+
+#: src/rcyay/build.c:673
+#, c-format
+msgid "could not remove (all) make dependencies\n"
+msgstr "Bauabhängigkeiten konnten nicht (alle) entfernt werden\n"
+
+#: src/rcyay/extra.c:44
+#, c-format
+msgid " no unneeded dependencies found\n"
+msgstr " Keine unnötigen Abhängigkeiten gefunden.\n"
+
+#: src/rcyay/extra.c:97
+#, c-format
+msgid "Installed packages"
+msgstr "Installierte Pakete"
+
+#: src/rcyay/extra.c:97
+#, c-format
+msgid "Explicitly installed"
+msgstr "Ausdrücklich installiert"
+
+#: src/rcyay/extra.c:98
+#, c-format
+msgid "Installed as dependency"
+msgstr "Als Abhängigkeit installiert"
+
+#: src/rcyay/extra.c:98
+#, c-format
+msgid "Foreign (AUR/locally built)"
+msgstr "Fremd (AUR/lokal gebaut)"
+
+#: src/rcyay/extra.c:98
+#, c-format
+msgid "Total size"
+msgstr "Gesamtgröße"
+
+#: src/rcyay/extra.c:99
+#, c-format
+msgid "Size of foreign packages"
+msgstr "Größe fremder Pakete"
+
+#: src/rcyay/extra.c:99
+#, c-format
+msgid "Repositories"
+msgstr "Repositorien"
+
+#: src/rcyay/extra.c:105
+#, c-format
+msgid "%s==> rcyay v%s - package statistics%s\n"
+msgstr "%s==> rcyay v%s – Paketstatistik%s\n"
+
+#: src/rcyay/extra.c:121
+#, c-format
+msgid "\n%s==> Ten biggest packages%s\n"
+msgstr "\n%s==> Zehn größte Pakete%s\n"
+
+#: src/rcyay/extra.c:227
+#, c-format
+msgid "no packages found\n"
+msgstr "Keine Pakete gefunden.\n"
+
+#: src/rcyay/extra.c:248
+#, c-format
+msgid "%s==>%s Packages to install (eg: 1 2 3, 1-3 or ^4):\n%s==>%s "
+msgstr "%s==>%s Pakete zum Installieren (z. B. 1 2 3, 1-3, ^4):\n%s==>%s "
+
+#: src/rcyay/extra.c:263
+#, c-format
+msgid "invalid selection\n"
+msgstr "Ungültige Auswahl\n"
+
+#: src/rcyay/extra.c:298
+#, c-format
+msgid "rcyay v%s - pacman with AUR support (UsrsideOS)\n\n"
+msgstr "rcyay v%s – pacman mit AUR (UsrsideOS)\n\n"
+
+#: src/rcyay/extra.c:299
+#, c-format
+msgid "In addition to all pacman operations:\n"
+msgstr "Zusätzlich zu allen pacman-Operationen:\n"
+
+#: src/rcyay/extra.c:300
+#, c-format
+msgid "    rcyay                      same as rcyay -Syu (upgrade repos and AUR)\n"
+msgstr "    rcyay                      wie rcyay -Syu (Repos und AUR aktualisieren)\n"
+
+#: src/rcyay/extra.c:301
+#, c-format
+msgid "    rcyay WORD ...             search repos+AUR and install a selection\n"
+msgstr "    rcyay WORT …               Repos+AUR durchsuchen und Auswahl installieren\n"
+
+#: src/rcyay/extra.c:302
+#, c-format
+msgid "    rcyay -S PACKAGE ...       repo package or AUR package (built with dependencies)\n"
+msgstr "    rcyay -S PAKET …           Repo- oder AUR-Paket (mit Abhängigkeiten bauen)\n"
+
+#: src/rcyay/extra.c:303
+#, c-format
+msgid "    rcyay -Ss/-Si WORD         also search the AUR / show AUR info (aur/...)\n"
+msgstr "    rcyay -Ss/-Si WORT         auch im AUR suchen bzw. AUR-Infos (aur/…)\n"
+
+#: src/rcyay/extra.c:304
+#, c-format
+msgid "    rcyay -Syu | -Sua          upgrade repos+AUR | AUR only\n"
+msgstr "    rcyay -Syu | -Sua          Repos+AUR aktualisieren | nur AUR\n"
+
+#: src/rcyay/extra.c:305
+#, c-format
+msgid "    rcyay -G PKG | -Gp PKG     download build files | print PKGBUILD\n"
+msgstr "    rcyay -G PAKET | -Gp PAKET Bauordner holen | PKGBUILD anzeigen\n"
+
+#: src/rcyay/extra.c:306
+#, c-format
+msgid "    rcyay -Yc                  remove unneeded dependencies\n"
+msgstr "    rcyay -Yc                  unnötige Abhängigkeiten entfernen\n"
+
+#: src/rcyay/extra.c:307
+#, c-format
+msgid "    rcyay -Ps                  package statistics\n\n"
+msgstr "    rcyay -Ps                  Paketstatistik\n\n"
+
+#: src/rcyay/extra.c:308
+#, c-format
+msgid "rcyay options:\n"
+msgstr "rcyay-Optionen:\n"
+
+#: src/rcyay/extra.c:309
+#, c-format
+msgid "    -a, --aur      AUR only         --repo          repositories only\n"
+msgstr "    -a, --aur      nur AUR          --repo          nur Repos\n"
+
+#: src/rcyay/extra.c:310
+#, c-format
+msgid "    --devel        rebuild VCS packages (-git ...) when pkgver() is newer\n"
+msgstr "    --devel        VCS-Pakete (-git …) neu bauen, wenn pkgver() neuer ist\n"
+
+#: src/rcyay/extra.c:311
+#, c-format
+msgid "    --removemake / --noremovemake  remove make dependencies afterwards (default: yes)\n"
+msgstr "    --removemake / --noremovemake  Bauabhängigkeiten danach entfernen (Standard: ja)\n"
+
+#: src/rcyay/extra.c:312
+#, c-format
+msgid "    --nodiff       do not show PKGBUILD/diff      --nocheck  skip check()\n"
+msgstr "    --nodiff       PKGBUILD/Diff nicht zeigen     --nocheck  check() überspringen\n"
+
+#: src/rcyay/extra.c:314
+#, c-format
+msgid "    --aururl URL   --builddir DIR   --rcyayconf FILE (default %s)\n\n"
+msgstr "    --aururl URL   --builddir DIR   --rcyayconf DATEI (Standard %s)\n\n"
+
+#: src/rcyay/rconf.c:71
+#, c-format
+msgid "%s:%d: unknown section [%s]\n"
+msgstr "%s:%d: unbekannter Abschnitt [%s]\n"
+
+#: src/rcyay/rconf.c:87
+#, c-format
+msgid "%s:%d: %s without a value\n"
+msgstr "%s:%d: %s ohne Wert\n"
+
+#: src/rcyay/rconf.c:100
+#, c-format
+msgid "%s:%d: %s: expected yes or no\n"
+msgstr "%s:%d: %s: yes oder no erwartet\n"
+
+#: src/rcyay/rconf.c:103
+#, c-format
+msgid "%s:%d: unknown setting %s\n"
+msgstr "%s:%d: unbekannte Einstellung %s\n"
+
+#: src/rcyay/rconf.c:122
+#, c-format
+msgid "cannot read configuration %s: %s\n"
+msgstr "Konfiguration %s nicht lesbar: %s\n"
+
+#: src/rcyay/rcyay.c:63
+#, c-format
+msgid "Copyright (C) 2026 rcyay developers; pacman (C) 2006-2024 Pacman Development Team\n"
+msgstr "Copyright (C) 2026 rcyay-Entwickler; pacman (C) 2006-2024 Pacman Development Team\n"
+
+#: src/rcyay/rcyay.c:64
+#, c-format
+msgid "Free software under the GNU General Public License, version 2 or later.\n"
+msgstr "Freie Software unter der GNU General Public License, Version 2 oder später.\n"
+
+#: src/rcyay/rcyay.c:145
+#, c-format
+msgid "-Y: only -Yc (remove unneeded dependencies) is supported\n"
+msgstr "-Y: nur -Yc (unnötige Abhängigkeiten entfernen) wird unterstützt\n"
+
+#: src/rcyay/rcyay.c:153
+#, c-format
+msgid "-P: only -Ps (statistics) is supported\n"
+msgstr "-P: nur -Ps (Statistik) wird unterstützt\n"
+
+#: src/rcyay/run.c:258
+#, c-format
+msgid "rcyay: switching user failed: %s\n"
+msgstr "rcyay: Nutzerwechsel fehlgeschlagen: %s\n"
+
+#: src/rcyay/run.c:336
+#, c-format
+msgid "this step needs root privileges, but %s is missing\n"
+msgstr "Für diesen Schritt sind Root-Rechte nötig, aber %s fehlt.\n"
+
+#: src/rcyay/run.c:384
+#, c-format
+msgid "Creating build user %s (makepkg never runs as root)\n"
+msgstr "Lege den Bau-Nutzer %s an (makepkg läuft nie als root)\n"
+
+#: src/rcyay/run.c:394
+#, c-format
+msgid "neither useradd nor adduser found - build user %s is missing\n"
+msgstr "Weder useradd noch adduser gefunden – Bau-Nutzer %s fehlt.\n"
+
+#: src/rcyay/run.c:398
+#, c-format
+msgid "could not create build user %s\n"
+msgstr "Bau-Nutzer %s konnte nicht angelegt werden.\n"
+
+#: src/rcyay/run.c:403
+#, c-format
+msgid "build user %s is missing after creating it\n"
+msgstr "Bau-Nutzer %s fehlt nach dem Anlegen.\n"
+
+#: src/rcyay/run.c:408
+#, c-format
+msgid "build user %s has UID 0 - makepkg must not run as root\n"
+msgstr "Bau-Nutzer %s hat UID 0 – makepkg darf nicht als root laufen.\n"
+
+#: lib/libaur/resolve.c:144
+#, c-format
+msgid "%s: cannot read .SRCINFO: %s"
+msgstr "%s: .SRCINFO nicht lesbar: %s"
+
+#: lib/libaur/resolve.c:145
+#, c-format
+msgid "unknown error"
+msgstr "unbekannter Fehler"
+
+#: lib/libaur/resolve.c:162
+#, c-format
+msgid "%s: package %s missing in .SRCINFO"
+msgstr "%s: Paket %s fehlt in .SRCINFO"
+
+#: lib/libaur/resolve.c:167
+#, c-format
+msgid "%s: not available for architecture %s"
+msgstr "%s: für die Architektur %s nicht verfügbar"
+
+#: lib/libaur/resolve.c:305
+#, c-format
+msgid "dependency not found: %s (required by %s)"
+msgstr "Abhängigkeit nicht gefunden: %s (benötigt von %s)"
+
+#: lib/libaur/resolve.c:384
+#, c-format
+msgid "dependency cycle:"
+msgstr "Abhängigkeitszyklus:"
+
+#: lib/libaur/resolve.c:442
+#, c-format
+msgid "target not found in AUR: %s"
+msgstr "Ziel nicht im AUR gefunden: %s"
+
+#: lib/libaur/rpc.c:156
+#, c-format
+msgid "invalid JSON from AUR: "
+msgstr "ungültiges JSON vom AUR: "
+
+#: lib/libaur/rpc.c:161
+#, c-format
+msgid "invalid AUR response: "
+msgstr "ungültige AUR-Antwort: "
+
+#: lib/libaur/rpc.c:161
+#, c-format
+msgid "no type"
+msgstr "kein Typ"
+
+#: lib/libaur/rpc.c:164
+#, c-format
+msgid "AUR: "
+msgstr "AUR: "
+
+#: lib/libaur/rpc.c:272
+#, c-format
+msgid "curl initialisation failed"
+msgstr "curl-Initialisierung fehlgeschlagen"
+
+#: lib/libaur/rpc.c:299
+#, c-format
+msgid "%s: HTTP %ld"
+msgstr "%s: HTTP %ld"
+
+#: lib/libaur/rpc.c:388
+#, c-format
+msgid "invalid AUR response"
+msgstr "ungültige AUR-Antwort"
+
+#: lib/libaur/rpc.c:602
+#, c-format
+msgid "%s: unsafe path %s"
+msgstr "%s: unsicherer Pfad %s"
+
+#: lib/libaur/rpc.c:622
+#, c-format
+msgid "%s: unsafe hardlink %s"
+msgstr "%s: unsicherer harter Link %s"
+
+#: lib/libaur/srcinfo.c:103
+#, c-format
+msgid "SRCINFO line %d: %s%s%s"
+msgstr "SRCINFO Zeile %d: %s%s%s"
+
+#: lib/libaur/srcinfo.c:169
+#, c-format
+msgid "no input"
+msgstr "keine Eingabe"
+
+#: lib/libaur/srcinfo.c:194
+#, c-format
+msgid "missing '='"
+msgstr "'=' fehlt"
+
+#: lib/libaur/srcinfo.c:201
+#, c-format
+msgid "empty key"
+msgstr "leerer Schlüssel"
+
+#: lib/libaur/srcinfo.c:207
+#, c-format
+msgid "unexpected pkgbase"
+msgstr "unerwartetes pkgbase"
+
+#: lib/libaur/srcinfo.c:213
+#, c-format
+msgid "pkgname before pkgbase"
+msgstr "pkgname vor pkgbase"
+
+#: lib/libaur/srcinfo.c:217
+#, c-format
+msgid "invalid or duplicate pkgname"
+msgstr "ungültiger oder doppelter pkgname"
+
+#: lib/libaur/srcinfo.c:227
+#, c-format
+msgid "field before pkgbase"
+msgstr "Feld vor pkgbase"
+
+#: lib/libaur/srcinfo.c:249
+#, c-format
+msgid "no pkgbase"
+msgstr "kein pkgbase"
+
+#: lib/libaur/srcinfo.c:253
+#, c-format
+msgid "no pkgname"
+msgstr "kein pkgname"
+
+#: lib/libaur/srcinfo.c:257
+#, c-format
+msgid "missing pkgver or pkgrel"
+msgstr "pkgver oder pkgrel fehlt"

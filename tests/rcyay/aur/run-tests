@@ -1,0 +1,176 @@
+#!/bin/bash
+# Ende-zu-Ende-Tests für rcyay gegen das Mock-AUR (rcyay-e1, 26.11.2026).
+# NUR in einer Wegwerf-VM als root ausführen – installiert/entfernt Pakete rc-*.
+#   run-tests RCYAY [NUTZER]
+#     RCYAY  = Pfad zum gebauten rcyay (z. B. ~bau/b/rcyay)
+#     NUTZER = normaler Nutzer mit sudo ohne Passwort für den Nutzer-Durchlauf (Standard bau)
+# Ausgabe im TAP-Format, Exit-Code 0 = alles grün.
+set -u
+RCYAY=$(readlink -f "${1:?Pfad zu rcyay}")
+NUTZER=${2:-bau}
+HIER=$(cd "$(dirname "$0")" && pwd)
+PORT=${RCYAY_MOCK_PORT:-8099}
+[ "$(id -u)" = 0 ] || { echo "als root starten (Wegwerf-VM)"; exit 2; }
+export LANG=C LC_ALL=C
+
+W=$(mktemp -d /tmp/rcyay-e2e.XXXXXX)
+chmod 755 "$W"
+N=0 FAIL=0
+ok()   { N=$((N+1)); echo "ok $N - $1"; }
+nok()  { N=$((N+1)); FAIL=$((FAIL+1)); echo "not ok $N - $1"; [ -f "$W/out" ] && sed 's/^/#   /' "$W/out" | tail -25; }
+check() { local d=$1; shift; if "$@"; then ok "$d"; else nok "$d"; fi; }
+installed() { pacman -Q "$1" >/dev/null 2>&1; }
+notinst()  { ! pacman -Q "$1" >/dev/null 2>&1; }
+reason()   { pacman -Qi "$1" 2>/dev/null | grep -q "^Install Reason *: $2"; }
+ver()      { [ "$(pacman -Q "$1" 2>/dev/null | cut -d' ' -f2)" = "$2" ]; }
+has()      { grep -q -- "$1" "$W/out"; }
+hasnot()   { ! grep -q -- "$1" "$W/out"; }
+aufraeumen() { rm -f /var/cache/pacman/pkg/rc-*; local p; p=$(pacman -Qq 2>/dev/null | grep '^rc-'); [ -n "$p" ] && pacman -Rdd --noconfirm $p >/dev/null 2>&1; true; }
+
+# ---------- Aufbau ----------
+cp -r "$HIER/pkgs" "$W/aur"; cp -r "$HIER/repo" "$W/repo-src"; cp -r "$HIER/pkgs-v2" "$W/aur-v2"
+mkdir -p "$W/repo"
+chown -R nobody: "$W/aur" "$W/aur-v2" "$W/repo-src" "$W/repo"
+srcinfo() { runuser -u nobody -- bash -c "cd '$1' && makepkg --printsrcinfo > .SRCINFO"; }
+for d in "$W"/aur/* "$W"/aur-v2/* "$W"/repo-src/*; do srcinfo "$d" || { echo "Bail out! SRCINFO $d"; exit 2; }; done
+for d in "$W"/repo-src/*; do
+  runuser -u nobody -- bash -c "cd '$d' && PKGDEST='$W/repo' makepkg -f >/dev/null 2>&1" || { echo "Bail out! Repo-Paket $d"; exit 2; }
+done
+repo-add -q "$W/repo/rcyaytest.db.tar.gz" "$W"/repo/*.pkg.tar.* >/dev/null || { echo "Bail out! repo-add"; exit 2; }
+{ cat /etc/pacman.conf; printf '\n[rcyaytest]\nSigLevel = Never\nServer = file://%s/repo\n' "$W"; } > "$W/pacman.conf"
+pacman --config "$W/pacman.conf" -Sy >/dev/null 2>&1 || { echo "Bail out! pacman -Sy"; exit 2; }
+cat > "$W/rcyay.conf" <<C
+[options]
+AURURL = http://127.0.0.1:$PORT
+RepoGitURL = http://127.0.0.1:$PORT/gitlab
+BuildDir = $W/bau-root
+C
+grep -v BuildDir "$W/rcyay.conf" > "$W/rcyay-nutzer.conf"
+chmod 644 "$W"/*.conf
+python3 "$HIER/server.py" --port "$PORT" --pkgs "$W/aur" --repo-dir "$W/repo-src" --log "$W/server.log" >"$W/server.out" 2>&1 &
+SRV=$!
+trap 'kill $SRV 2>/dev/null; aufraeumen' EXIT
+for _ in $(seq 50); do grep -q bereit "$W/server.out" 2>/dev/null && break; sleep 0.1; done
+aufraeumen
+rm -f /tmp/rcyay-devver
+
+R()  { "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/rcyay.conf" "$@" >"$W/out" 2>&1; }
+RU() { runuser -u "$NUTZER" -- env HOME="$(getent passwd "$NUTZER" | cut -d: -f6)" \
+         "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/rcyay-nutzer.conf" "$@" >"$W/out" 2>&1; }
+
+# ---------- Grundlagen ----------
+R -V;                 check "-V zeigt rcyay-Version" has "^rcyay v"
+R -Q pacman;          check "-Q wird an pacman durchgereicht" has "^pacman "
+R -Ss rc-hello;       check "-Ss findet AUR-Paket" has "^aur/rc-hello 1.0-1"
+R -Ss repodep;        check "-Ss findet Repo-Paket" has "^rcyaytest/rc-repodep"
+R -Ss --aur Kette;    check "-Ss --aur nur AUR (4 Treffer)" [ "$(grep -c '^aur/' "$W/out")" = 4 ]
+R -Ss --aur --topdown Kette; check "Sortierung nach Stimmen, --topdown: beste zuerst" bash -c "grep '^aur/' '$W/out' | head -1 | grep -q rc-chain-c-old"
+R -Ss --aur Kette;   check "Standard BottomUp: beste zuletzt" bash -c "grep '^aur/' '$W/out' | tail -1 | grep -q rc-chain-c-old"
+R -Ss --aur --sortby name --topdown Kette; check "--sortby name" bash -c "grep '^aur/' '$W/out' | head -1 | grep -q rc-chain-a"
+R -Ss --sortby quatsch Kette; r=$?; check "--sortby ungültig -> Fehler" [ $r != 0 ]
+R -Ssq rc-chain;      check "-Ssq nur Namen" has "^rc-chain-b$"
+R -Ss gibtsnichtxyz;  r=$?; check "-Ss ohne Treffer: Exit 1" [ $r = 1 ]
+R -Si rc-hello;       check "-Si AUR-Info" has "^Repository *: aur"
+R -Si rc-repodep;     check "-Si Repo-Info" has "^Repository *: rcyaytest"
+R -Si gibtsnichtxyz;  r=$?; check "-Si unbekannt: Fehler" [ $r != 0 ]
+R -Ps;                check "-Ps Statistik" has "Installed packages"
+
+# ---------- Installation als root (Bau-Nutzer) ----------
+R -S --noconfirm rc-hello; r=$?
+check "-S rc-hello (root)" [ $r = 0 ]
+check "rc-hello installiert, ausdrücklich" reason rc-hello Explicitly
+check "makepkg lief als rcyay-bau, nicht root" grep -q " rcyay-bau$" /usr/share/rcyay-test/rc-hello
+R -S --noconfirm --needed rc-hello; check "--needed: aktuell -> übersprungen" has "is up to date"
+
+R -S --noconfirm rc-chain-a; r=$?
+check "-S Kette AUR→AUR→provides + Repo-Abh. (Exit 0)" [ $r = 0 ]
+check "rc-chain-a ausdrücklich" reason rc-chain-a Explicitly
+check "rc-chain-b als Abhängigkeit" reason rc-chain-b "Installed as a dependency"
+check "rc-chain-c über provides: rc-chain-c-neu" installed rc-chain-c-neu
+check "zu alter Anbieter rc-chain-c-old nicht gewählt" notinst rc-chain-c-old
+check "Repo-Abhängigkeit rc-repodep installiert" reason rc-repodep "Installed as a dependency"
+check "Bauabh. rc-maketool entfernt" notinst rc-maketool
+check "Bauabh. rc-maketool-lib entfernt" notinst rc-maketool-lib
+check "Repo-Bauabh. rc-repomake entfernt" notinst rc-repomake
+check "Bauordnung: c vor b vor a" bash -c "grep -n 'Building' '$W/out' | grep -o 'rc-chain-[a-c][a-z-]*' | tr '\n' ' ' | grep -q 'rc-chain-c-neu rc-chain-b rc-chain-a'"
+
+R -S --noconfirm rc-needsplit; r=$?
+check "-S rc-needsplit (split-Paket als Abh.)" [ $r = 0 ]
+check "rc-split-b installiert" installed rc-split-b
+check "rc-split-a installiert (Abh. von split-b)" installed rc-split-a
+check "rc-split nur einmal gebaut" [ "$(grep -c 'Building rc-split ' "$W/out")" = 1 ]
+
+R -S --noconfirm rc-cyc1; r=$?
+check "Zyklus wird erkannt (Exit != 0)" [ $r != 0 ]
+check "Zyklus-Meldung" has "cycle"
+check "nichts aus dem Zyklus installiert" notinst rc-cyc1
+
+R -S --noconfirm rc-missing; r=$?
+check "fehlende Abhängigkeit -> Fehler" [ $r != 0 ]
+check "Meldung nennt fehlende Abhängigkeit" has "gibt-es-nicht-rcyay"
+
+R -S --noconfirm rc-gibtsnicht; r=$?
+check "unbekanntes Ziel -> Fehler" [ $r != 0 ]
+
+R -S --noconfirm rc-badsum; r=$?
+check "Prüfsummenfehler -> Bau scheitert" [ $r != 0 ]
+check "rc-badsum nicht installiert" notinst rc-badsum
+
+R -S --noconfirm --noremovemake rc-chain-a; r=$?
+check "--noremovemake: Bau ok" [ $r = 0 ]
+check "--noremovemake: rc-maketool bleibt (als Abh.)" reason rc-maketool "Installed as a dependency"
+
+R -Yc --noconfirm; r=$?
+check "-Yc entfernt verwaiste Abhängigkeiten" bash -c "[ $r = 0 ] && ! pacman -Q rc-maketool >/dev/null 2>&1"
+check "-Yc lässt Benötigtes stehen" installed rc-chain-b
+
+# ---------- Aktualisierung, Diff, --devel ----------
+R -S --noconfirm rc-up; check "rc-up 1.0 installiert" ver rc-up 1.0-1
+R -Sua --noconfirm; check "-Sua ohne Neuerungen" has "there is nothing to do in the AUR"
+cp "$W/aur-v2/rc-up/PKGBUILD" "$W/aur-v2/rc-up/.SRCINFO" "$W/aur/rc-up/"
+yes y | R -Sua; r=$?
+check "-Sua aktualisiert rc-up (mit Rückfragen)" bash -c "[ $r = 0 ]"
+check "rc-up jetzt 2.0" ver rc-up 2.0-1
+check "Diff zeigt Versionsänderung" has "^+pkgver=2.0"
+check "Diff zeigt alte Version" has "^-pkgver=1.0"
+
+echo 1 > /tmp/rcyay-devver; chmod 644 /tmp/rcyay-devver
+R -S --noconfirm rc-dev-git; check "rc-dev-git 1 installiert" ver rc-dev-git 1-1
+R -Sua --devel --noconfirm; r=$?
+check "--devel: unverändert -> übersprungen" bash -c "[ $r = 0 ] && grep -q 'is up to date' '$W/out'"
+echo 2 > /tmp/rcyay-devver
+R -Sua --devel --noconfirm; check "--devel: neue pkgver -> aktualisiert" ver rc-dev-git 2-1
+
+# ---------- Prüfung vor dem Bau ----------
+printf 'y\nn\n' | R -S rc-install; r=$?
+check "Ablehnen nach PKGBUILD-Anzeige bricht ab" bash -c "[ $r != 0 ] && ! pacman -Q rc-install >/dev/null 2>&1"
+check "PKGBUILD wurde angezeigt" has "^pkgname=rc-install"
+check ".install-Datei wurde angezeigt" has "post_install"
+
+# ---------- -G / -Gp ----------
+mkdir -p "$W/g"; ( cd "$W/g" && "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/rcyay.conf" -G rc-split rc-repodep >"$W/out" 2>&1 ); r=$?
+check "-G holt AUR-Bauordner" test -f "$W/g/rc-split/PKGBUILD" -a -f "$W/g/rc-split/.SRCINFO"
+check "-G holt Repo-Bauordner (gitlab)" test -f "$W/g/rc-repodep/PKGBUILD"
+R -Gp rc-hello; check "-Gp zeigt PKGBUILD" has "^pkgname=rc-hello"
+R -G --repo rc-hello; r=$?; check "-G --repo für AUR-Paket -> Fehler" [ $r != 0 ]
+
+# ---------- interaktive Suche ----------
+{ echo 1; yes y; } | R rc-hello; r=$?
+check "rcyay WORT: Auswahl 1 installiert" bash -c "[ $r = 0 ] && grep -q 'aur/rc-hello' '$W/out'"
+
+# ---------- als normaler Nutzer (sudo) ----------
+aufraeumen
+RU -S --noconfirm rc-chain-a; r=$?
+check "Nutzer: -S Kette über sudo (Exit 0)" [ $r = 0 ]
+check "Nutzer: rc-chain-a installiert" installed rc-chain-a
+check "Nutzer: makepkg lief als $NUTZER" grep -q " $NUTZER\$" /usr/share/rcyay-test/rc-chain-a
+check "Nutzer: Bauabh. entfernt" notinst rc-maketool
+check "Nutzer: Bauordner im Home" test -d "$(getent passwd "$NUTZER" | cut -d: -f6)/.cache/rcyay/rc-chain-a"
+RU -Ss rc-hello; check "Nutzer: -Ss" has "^aur/rc-hello"
+
+# ---------- Server-Protokoll ----------
+check "Snapshots nur einmal je Lauf geholt" bash -c "! grep -q 'snapshot/rc-split.tar.gz' '$W/server.log' || [ \$(grep -c 'snapshot/rc-split.tar.gz' '$W/server.log') -le 2 ]"
+
+echo "1..$N"
+[ $FAIL = 0 ] && { echo "# alle $N Tests grün"; rm -rf "$W"; exit 0; }
+echo "# $FAIL von $N Tests fehlgeschlagen (Arbeitsordner $W bleibt)"; exit 1

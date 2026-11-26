@@ -1,0 +1,9 @@
+pkgname=rc-install
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="mit install-Skript"
+install=rc-install.install
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

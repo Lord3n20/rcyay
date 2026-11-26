@@ -1,0 +1,9 @@
+pkgname=rc-cyc1
+pkgver=1
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Zyklus 1"
+depends=(rc-cyc2)
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

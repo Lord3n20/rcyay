@@ -1,0 +1,10 @@
+pkgname=rc-chain-a
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Kette Anfang"
+depends=(rc-chain-b rc-repodep)
+makedepends=(rc-maketool rc-repomake)
+build() { id -un > "$srcdir/wer"; test -f /usr/share/rcyay-test/rc-maketool && test -f /usr/share/rcyay-test/rc-repomake; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

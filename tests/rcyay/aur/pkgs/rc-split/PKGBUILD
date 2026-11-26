@@ -1,0 +1,9 @@
+pkgbase=rc-split
+pkgname=(rc-split-a rc-split-b)
+pkgver=3.1
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Geteiltes Paket"
+package_rc-split-a() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo a > "$pkgdir/usr/share/rcyay-test/$pkgname"; }
+package_rc-split-b() { depends=(rc-split-a); mkdir -p "$pkgdir/usr/share/rcyay-test"; echo b > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

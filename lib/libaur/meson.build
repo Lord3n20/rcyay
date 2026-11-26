@@ -4,4 +4,5 @@ libaur_sources = files('''
   srcinfo.h srcinfo.c
   resolve.h resolve.c
   aurutil.h aurutil.c
+  aurintl.h
 '''.split())

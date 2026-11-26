@@ -1,0 +1,10 @@
+pkgname=rc-badsum
+pkgver=1
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="falsche Pruefsumme"
+source=(daten.txt)
+sha256sums=('0000000000000000000000000000000000000000000000000000000000000000')
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

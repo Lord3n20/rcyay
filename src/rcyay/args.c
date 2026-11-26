@@ -63,7 +63,7 @@ static int is_op(char c)
 static int set_op(char c)
 {
 	if(R.op && R.op != c) {
-		rc_err("Es darf nur eine Operation gleichzeitig verwendet werden.\n");
+		rc_err(_("only one operation may be used at a time\n"));
 		return -1;
 	}
 	R.op = c;
@@ -107,7 +107,7 @@ static int parse_long(int argc, char *argv[], int i)
 	int used = 1, glob, trans;
 
 	if(n >= sizeof(name)) {
-		rc_err("Unbekannte Option: %s\n", argv[i]);
+		rc_err(_("unknown option: %s\n"), argv[i]);
 		return -1;
 	}
 	memcpy(name, arg, n);
@@ -127,18 +127,27 @@ static int parse_long(int argc, char *argv[], int i)
 		return 1;
 	}
 	if(strcmp(name, "nodiff") == 0) { R.nodiff = 1; return 1; }
+	if(strcmp(name, "topdown") == 0) { R.bottomup = 0; return 1; }
+	if(strcmp(name, "bottomup") == 0) { R.bottomup = 1; return 1; }
 	if(strcmp(name, "nocheck") == 0) { R.nocheck = 1; return 1; }
 	if(strcmp(name, "aururl") == 0 || strcmp(name, "builddir") == 0 ||
-			strcmp(name, "rcyayconf") == 0) {
+			strcmp(name, "rcyayconf") == 0 || strcmp(name, "sortby") == 0) {
 		if(!val) {
 			if(i + 1 >= argc) {
-				rc_err("Option --%s braucht ein Argument\n", name);
+				rc_err(_("option --%s requires an argument\n"), name);
 				return -1;
 			}
 			val = argv[i + 1];
 			used = 2;
 		}
-		if(name[0] == 'a') set_path(&R.cli_aururl, val);
+		if(name[0] == 's') {
+			if(strcmp(val, "votes") && strcmp(val, "popularity") && strcmp(val, "name") &&
+					strcmp(val, "modified")) {
+				rc_err(_("invalid argument '%s' for %s\n"), val, "--sortby");
+				return -1;
+			}
+			set_path(&R.sortby, val);
+		} else if(name[0] == 'a') set_path(&R.cli_aururl, val);
 		else if(name[0] == 'b') set_path(&R.cli_builddir, val);
 		else set_path(&R.rcyayconf, val);
 		return used;
@@ -170,7 +179,7 @@ static int parse_long(int argc, char *argv[], int i)
 	trans = in_list(long_trans, name);
 	if(in_list(long_arg, name) && !val) {
 		if(i + 1 >= argc) {
-			rc_err("Option --%s braucht ein Argument\n", name);
+			rc_err(_("option --%s requires an argument\n"), name);
 			return -1;
 		}
 		val = argv[i + 1];
@@ -197,7 +206,7 @@ static int parse_short(int argc, char *argv[], int i)
 			int used = 1;
 			if(!v) {
 				if(i + 1 >= argc) {
-					rc_err("Option -%c braucht ein Argument\n", c);
+					rc_err(_("option -%c requires an argument\n"), c);
 					return -1;
 				}
 				v = argv[i + 1];

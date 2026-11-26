@@ -60,8 +60,8 @@ static void useragent(void)
 static int print_version(void)
 {
 	printf("rcyay v%s – pacman v%s, libalpm v%s\n", RCYAY_VERSION, PACKAGE_VERSION, alpm_version());
-	printf("Copyright (C) 2026 rcyay-Entwickler; pacman (C) 2006-2024 Pacman Development Team\n");
-	printf("Freie Software unter der GNU General Public License, Version 2 oder später.\n");
+	printf(_("Copyright (C) 2026 rcyay developers; pacman (C) 2006-2024 Pacman Development Team\n"));
+	printf(_("Free software under the GNU General Public License, version 2 or later.\n"));
 	return 0;
 }
 
@@ -79,12 +79,14 @@ int main(int argc, char *argv[])
 #if defined(ENABLE_NLS)
 	setlocale(LC_ALL, "");
 	bindtextdomain(PACKAGE, LOCALEDIR);
+	bindtextdomain("rcyay", LOCALEDIR);
 	textdomain(PACKAGE);
 #endif
 
 	R.myname = argv[0];
 	R.self = self_path(argv[0]);
 	R.removemake = -1;
+	R.bottomup = -1;
 
 	if(argc == 1) {
 		argc = 2;
@@ -140,7 +142,7 @@ int main(int argc, char *argv[])
 			if(R.cnt['c']) {
 				ret = rc_op_clean();
 			} else {
-				rc_err("-Y: nur -Yc (unnötige Abhängigkeiten entfernen) wird unterstützt\n");
+				rc_err(_("-Y: only -Yc (remove unneeded dependencies) is supported\n"));
 				ret = 1;
 			}
 			break;
@@ -148,7 +150,7 @@ int main(int argc, char *argv[])
 			if(R.cnt['s']) {
 				ret = rc_op_stats();
 			} else {
-				rc_err("-P: nur -Ps (Statistik) wird unterstützt\n");
+				rc_err(_("-P: only -Ps (statistics) is supported\n"));
 				ret = 1;
 			}
 			break;

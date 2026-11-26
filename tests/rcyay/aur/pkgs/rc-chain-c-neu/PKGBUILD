@@ -1,0 +1,10 @@
+pkgname=rc-chain-c-neu
+pkgver=2.5
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Kette Ende (neu)"
+provides=('rc-chain-c=2.5')
+conflicts=(rc-chain-c)
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

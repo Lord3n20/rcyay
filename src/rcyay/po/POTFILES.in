@@ -1,0 +1,11 @@
+# Quelldateien mit übersetzbaren Texten (rcyay + libaur)
+src/rcyay/aur.c
+src/rcyay/args.c
+src/rcyay/build.c
+src/rcyay/extra.c
+src/rcyay/rconf.c
+src/rcyay/rcyay.c
+src/rcyay/run.c
+lib/libaur/resolve.c
+lib/libaur/rpc.c
+lib/libaur/srcinfo.c
