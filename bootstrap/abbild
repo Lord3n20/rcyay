@@ -142,6 +142,9 @@ kernel() {
 		CONFIG_CRYPTO_SHA512=y
 		CONFIG_CRYPTO_AES=y
 		CONFIG_CRYPTO_DES=y
+		CONFIG_CRYPTO_ARC4=y
+		CONFIG_CRYPTO_CTR=y
+		CONFIG_CRYPTO_USER_API_ENABLE_OBSOLETE=y
 		CONFIG_ASYMMETRIC_KEY_TYPE=y
 		CONFIG_ASYMMETRIC_PUBLIC_KEY_SUBTYPE=y
 		CONFIG_X509_CERTIFICATE_PARSER=y
@@ -169,7 +172,8 @@ kernel() {
 	make -C "$tree" LLVM="$llvm/" LOCALVERSION= olddefconfig >/dev/null
 	local s
 	for s in BTRFS_FS VIRTIO_BLK VIRTIO_NET VIRTIO_PCI 9P_FS NET_9P_VIRTIO SERIAL_8250_CONSOLE DEVTMPFS_MOUNT \
-		SQUASHFS OVERLAY_FS BLK_DEV_LOOP ISO9660_FS EXFAT_FS BLK_DEV_DM USB_STORAGE BLK_DEV_NVME RD_ZSTD CRYPTO_USER_API_SKCIPHER CRYPTO_USER_API_HASH; do
+		SQUASHFS OVERLAY_FS BLK_DEV_LOOP ISO9660_FS EXFAT_FS BLK_DEV_DM USB_STORAGE BLK_DEV_NVME RD_ZSTD CRYPTO_USER_API_SKCIPHER CRYPTO_USER_API_HASH \
+		KEY_DH_OPERATIONS CRYPTO_ARC4 CRYPTO_CMAC PKCS8_PRIVATE_KEY_PARSER; do
 		grep -q "^CONFIG_$s=y" "$tree/.config" || abbruch "CONFIG_$s ist nicht =y"
 	done
 	make -C "$tree" LLVM="$llvm/" LOCALVERSION= -j"$JOBS" bzImage modules
@@ -380,7 +384,7 @@ beigaben() { # .inits und .commit
 
 # der Kernel hängt nicht von der Variante ab: eine Marke für musl und glibc
 # (-2: Live-Kernel ohne CMDLINE, USB/NVMe/exFAT fest eingebaut)
-FERTIG=$KBAU/fertig schritt abbild-kernel-2 kernel
+FERTIG=$KBAU/fertig schritt abbild-kernel-3 kernel
 ((NUR_KERNEL)) && exit 0
 rootfs_bauen
 meldung "Rootfs fertig: $RFS"
