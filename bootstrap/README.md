@@ -29,6 +29,10 @@ Einstellungen (Umgebung, siehe `lib.sh`): `VARIANTE` (musl | glibc), `TC`, `ARBE
 | `stage2-innen` | Teil von stage2 im chroot (Vorbau + makepkg-Schleife) |
 | `overlay-anwenden` | wendet `overlay/NAME/` auf einen PKGBUILD-Ordner an (Helfer: `overlay/usrside-overlay.sh`) |
 | `pakete/NAME/` | eigene PKGBUILDs, wo Arch nichts Passendes hat (siehe unten) |
+| `live-init` | `/init` des Live-Initramfs (`abbild --squashfs`) |
+| `besitzer-reparieren` | Notbehelf: packt das Repo als root:root neu (fakeroot wirkt auf musl nicht bei tar, siehe „Offen“) |
+| `arch-eintrag` | Pflege (Arch-Rechner): Listenzeile `NAME arch:TAG SHA` aus den Sync-Datenbanken |
+| `m5-ordnung` | Pflege (WIP): Bau-Reihenfolge für M5 aus depends/makedepends der Sync-Datenbanken |
 
 ## Ablauf
 
@@ -61,6 +65,27 @@ GPT-Platte an (ESP + btrfs mit `@`, `@home`), installiert **alle Pakete des Repo
 musl-chroot, kopiert das Repo nach `/srv/usrside-musl` (Server in `/etc/pacman.conf`: `rcyay -Syu` geht im
 Abbild ohne eigenes Netz-Repo), dazu Module, Kernel (auch als `EFI/BOOT/BOOTX64.EFI`) und SSH-Schlüssel.
 Ausgabe nach dem Vertrag von `~/vm/rcyay/test-rcyay`: `usrside-musl.{qcow2,vmlinuz,cmdline,inits,commit}`.
+Seit 26.11. abends in zwei Schritten: **Rootfs-Bau** nach `$ARBEIT/$VARIANTE/abbild-rootfs` (Pakete bzw.
+`--rootfs DIR`, Module, Grundeinstellungen; bricht ab, wenn außer `/home` etwas uid 1000 gehört) und **Ausgabe**:
+`--platte` (Standard, qcow2 wie oben) und/oder `--squashfs` (Live für M7: `usrside-VARIANTE-live.squashfs` =
+künftiges `usrside/rootfs.sfs` im ISO, `…-live.vmlinuz` ohne eingebaute Befehlszeile, `…-live.initramfs`
+aus BusyBox + musl-Lader + `live-init`); `--nur-rootfs` hört nach Schritt 1 auf. Das Initramfs sucht
+`usrside/rootfs.sfs` auf allen Geräten (`/dev/mapper/ventoy`, `/dev/dm-*`, `/dev/sr*`, alle aus
+`/proc/partitions`) und in `*.iso`-Dateien bis Tiefe 3 (bzw. `usrside.iso=PFAD`), hängt squashfs + tmpfs als
+overlayfs ein, lässt Medium/ISO/Schichten unter `/run/usrside/` und wechselt mit `switch_root` auf `init=`.
+Kernel-Parameter `usrside.warte=S` (Standard 30), `usrside.debug` (Shell statt Neustart bei Fehler).
+Der Kernel hat dafür USB-Storage/UAS, NVMe, SR, exFAT, ISO9660, squashfs, overlayfs, dm, loop fest eingebaut,
+dazu die Kernel-Krypto für iwd.
+
+**M5** (Desktop aus Quellen): `LISTE=m5-liste bootstrap/stage2 [PAKET …]` baut eine weitere Liste im selben
+chroot/Repo. Zeilen erzeugt `arch-eintrag`.
+
+## Offen
+
+- **fakeroot auf musl**: Im chroot meldet `fakeroot id -u` 0, aber tar/bsdtar sehen die echten Besitzer
+  (stat-Aufrufe von libarchive werden nicht abgefangen – vermutlich fehlen Wrapper ohne `64`-Suffix, musl ≥ 1.2.4
+  hat keine `stat64`-Symbole mehr). Bis zum Fix packt `besitzer-reparieren` die Pakete nach stage2 als
+  root:root neu. Für M5 vorher fakeroot reparieren (Alpine-Patches ansehen), sonst nach jedem Lauf reparieren.
 
 ### Inits im Abbild (Paket `usrside-dienste`)
 Alle drei liegen im selben Abbild, gewählt wird mit `init=`:
