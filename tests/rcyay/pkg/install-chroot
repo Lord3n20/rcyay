@@ -70,6 +70,13 @@ printf 'VirtualProvides = which\n' >> "$CH/etc/rcyay.conf"
 "$RC" --config "$W/pacman.conf" --root "$CH" --rcyayconf "$CH/etc/rcyay.conf" --provides apply >"$W/out" 2>&1; r=$?
 check "rcyay --provides apply: usrside-provides im chroot" bash -c "[ $r = 0 ] && pacman -r $CH -Qi usrside-provides | grep -q '^Provides *: which'"
 check "pacman -T which im chroot erfüllt" pacman -r "$CH" -T which
+# ohne coreutils: der Hook darf selbst keine GNU-Werkzeuge brauchen (Befund t1)
+pacman --config "$W/pacman.conf" -r "$CH" -Rdd --noconfirm coreutils >"$W/out" 2>&1; r=$?
+check "pacman -Rdd coreutils: Hook füllt ls/ln/env/readlink mit BusyBox" bash -c "[ $r = 0 ] && for b in ls ln env readlink mv; do [ \"\$(readlink $CH/usr/bin/\$b)\" = busybox ] || exit 1; done"
+check "ohne coreutils: ls/env laufen im chroot" inch sh -c 'ls / >/dev/null && env | grep -q PATH'
+"$RC" --config "$W/pacman.conf" --root "$CH" --rcyayconf "$CH/etc/rcyay.conf" -S --noconfirm coreutils >"$W/out" 2>&1; r=$?
+check "rcyay -S coreutils danach: übernimmt die Pfade wieder" bash -c "[ $r = 0 ] && pacman -r $CH -Qqo $CH/usr/bin/ls | grep -qx coreutils && [ ! -L $CH/usr/bin/ls ]"
+check "Linkliste ohne usr/bin/ls" bash -c "! grep -qx usr/bin/ls $L"
 pacman -r "$CH" -Rdd --noconfirm usrside-busybox >"$W/out" 2>&1
 check "Entfernen von usrside-busybox räumt alle Links weg" bash -c "[ ! -e $L ] && ! find $CH/usr/bin -maxdepth 1 -lname busybox | grep -q ."
 

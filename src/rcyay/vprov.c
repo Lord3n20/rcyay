@@ -384,11 +384,16 @@ void rc_busybox_overwrite(void)
 	n = 0;
 	for(int first = 1; (n = getline(&line, &cap, f)) > 0; ) {
 		line[strcspn(line, "\n")] = '\0';
-		/* nur einfache Pfade usr/bin/NAME (keine Muster) */
-		if(strncmp(line, "usr/bin/", 8) != 0 || !line[8] || strpbrk(line + 8, "/*?[,\\")) {
+		/* nur Pfade usr/bin/NAME; --overwrite sind fnmatch-Muster → *?[\\ maskieren
+		 * (BusyBox hat das Applet „[“), Komma trennt die Liste und geht nicht */
+		if(strncmp(line, "usr/bin/", 8) != 0 || !line[8] || strpbrk(line + 8, "/,")) {
 			continue;
 		}
-		fprintf(out, "%s%s", first ? "" : ",", line);
+		fputs(first ? "" : ",", out);
+		for(const char *c = line; *c; c++) {
+			if(strchr("*?[]\\", *c)) fputc('\\', out);
+			fputc(*c, out);
+		}
 		first = 0;
 	}
 	fclose(out);

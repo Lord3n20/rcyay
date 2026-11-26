@@ -11,7 +11,7 @@
 #   cd pkg/usrside-busybox && makepkg
 pkgname=usrside-busybox
 pkgver=1.36.1
-pkgrel=1
+pkgrel=2
 pkgdesc='UsrsideOS: BusyBox applets as commands wherever no package provides the path'
 arch=(x86_64 x86_64_musl)
 url='https://github.com/Lord3n20/usrsideos'

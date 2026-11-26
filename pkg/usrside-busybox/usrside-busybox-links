@@ -3,23 +3,26 @@
 #   links           fehlende Links ergänzen, Liste /var/lib/usrside-busybox/links neu schreiben
 #   links --remove  alle eigenen Links entfernen (vor dem Entfernen des Pakets)
 # Nur busybox-eigene Applets; nie etwas überschreiben, was nicht unser Link ist.
+# Alle Werkzeuge kommen aus BusyBox selbst (BB): nach „-Rdd coreutils“ gibt es kein ln/readlink/mv
+# mehr – genau dann muss der Hook die frei gewordenen Pfade wieder belegen. Nur sh-Eingebaute sonst.
+BB=/usr/bin/busybox
 L=/var/lib/usrside-busybox/links
-mkdir -p /var/lib/usrside-busybox
-ours() { [ -L "/$1" ] && [ "$(readlink "/$1")" = busybox ]; }
+[ -x "$BB" ] || exit 0
+"$BB" mkdir -p /var/lib/usrside-busybox
+ours() { [ -L "/$1" ] && [ "$("$BB" readlink "/$1")" = busybox ]; }
 if [ "${1:-}" = --remove ]; then
-	[ -f "$L" ] && while read -r p; do ours "$p" && rm -f "/$p"; done < "$L"
-	rm -f "$L"
+	[ -f "$L" ] && while read -r p; do ours "$p" && "$BB" rm -f "/$p"; done < "$L"
+	"$BB" rm -f "$L"
 	exit 0
 fi
-[ -x /usr/bin/busybox ] || exit 0
 : > "$L.neu"
-for a in $(/usr/bin/busybox --list); do
+for a in $("$BB" --list); do
 	case "$a" in busybox|*/*|'') continue;; esac
 	p=usr/bin/$a
 	if ours "$p"; then
 		echo "$p" >> "$L.neu"
 	elif [ ! -e "/$p" ] && [ ! -L "/$p" ]; then
-		ln -s busybox "/$p" && echo "$p" >> "$L.neu"
+		"$BB" ln -s busybox "/$p" && echo "$p" >> "$L.neu"
 	fi
 done
-mv -f "$L.neu" "$L"
+"$BB" mv -f "$L.neu" "$L"
