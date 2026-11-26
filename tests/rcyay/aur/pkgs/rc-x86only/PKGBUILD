@@ -1,0 +1,8 @@
+pkgname=rc-x86only
+pkgver=1.0
+pkgrel=1
+arch=(x86_64)
+license=(MIT)
+pkgdesc="rcyay Testpaket nur mit arch=(x86_64), baut aus Quellen auch auf musl"
+depends_x86_64=(rc-gibt-es-nicht-x86)
+package() { :; }

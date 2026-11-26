@@ -38,6 +38,8 @@ struct aur_base_t {
 	alpm_list_t *explicit;   /* davon ausdrücklich verlangt (char*) */
 	alpm_list_t *runtime;    /* davon zur Laufzeit gebraucht (char*), Rest = nur Bau */
 	alpm_list_t *edges;      /* aur_edge_t* */
+	char *arch;              /* Architektur für *_ARCH-Felder (musl: evtl. glibc-Arch) */
+	int foreign_arch;        /* arch=() ohne die Ziel-Arch: Quell-Bau mit --ignorearch */
 	int mark;                /* intern */
 };
 
@@ -65,6 +67,8 @@ typedef struct {
 	aur_srcinfo_t *(*srcinfo)(void *ud, aur_pkg_t *pkg, char **err);
 	/* Auswahl bei mehreren Anbietern; NULL = Standardwahl */
 	aur_pkg_t *(*choose)(void *ud, const char *dep, alpm_list_t *candidates);
+	/* nur bei Ziel-Arch *_musl: Grund (malloc), warum pkgname nur mit glibc geht, sonst NULL */
+	char *(*glibc_only)(void *ud, aur_base_t *b, const char *pkgname);
 } aur_resolver_t;
 
 /* Löst targets (AUR-Paketnamen) auf. Gibt immer einen Plan zurück (außer bei

@@ -844,5 +844,32 @@ msgstr "Bau gescheitert – dafür installierte Abhängigkeiten bleiben (entfern
 
 #: lib/libaur/resolve.c
 #, c-format
-msgid "%s: only for glibc (arch=%s), not available for %s"
-msgstr "%s: nur für glibc (arch=%s), nicht verfügbar für %s"
+msgid "%s: only for glibc - %s"
+msgstr "%s: nur für glibc – %s"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "%s: arch=() does not list %s - building from source anyway (untested on musl)\n"
+msgstr "%s: arch=() nennt %s nicht – wird trotzdem aus Quellen gebaut (ungetestet auf musl)\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "listed in nur-glibc.txt (%s)"
+msgstr "steht in nur-glibc.txt (%s)"
+
+#: src/rcyay/build.c
+msgid "listed in nur-glibc.txt"
+msgstr "steht in nur-glibc.txt"
+
+#: src/rcyay/build.c
+msgid "prebuilt binary package (use --force-musl to try anyway)"
+msgstr "fertiges Binärpaket (mit --force-musl trotzdem versuchen)"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "source %s is a prebuilt binary (use --force-musl to try anyway)"
+msgstr "Quelle %s ist ein fertiges Binärpaket (mit --force-musl trotzdem versuchen)"
+
+#: src/rcyay/extra.c
+msgid "    --force-musl   build -bin/binary-source packages on musl anyway (not nur-glibc.txt)\n"
+msgstr "    --force-musl   -bin/Binär-Quellen auf musl trotzdem bauen (nicht nur-glibc.txt)\n"

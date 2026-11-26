@@ -30,6 +30,7 @@ typedef struct {
 	alpm_list_t *provides;
 	alpm_list_t *conflicts;
 	alpm_list_t *replaces;
+	alpm_list_t *source;        /* aur_archval_t* (nur pkgbase) */
 	alpm_list_t *arch;          /* char* */
 	char *pkgdesc;
 	unsigned int set;           /* Bitmaske AUR_SI_* (nur in pkgname-Abschnitten) */
@@ -44,7 +45,8 @@ enum {
 	AUR_SI_CONFLICTS = 1 << 5,
 	AUR_SI_REPLACES = 1 << 6,
 	AUR_SI_ARCH = 1 << 7,
-	AUR_SI_PKGDESC = 1 << 8
+	AUR_SI_PKGDESC = 1 << 8,
+	AUR_SI_SOURCE = 1 << 9
 };
 
 typedef struct {
@@ -80,7 +82,8 @@ enum aur_si_field {
 	AUR_FIELD_OPTDEPENDS,
 	AUR_FIELD_PROVIDES,
 	AUR_FIELD_CONFLICTS,
-	AUR_FIELD_REPLACES
+	AUR_FIELD_REPLACES,
+	AUR_FIELD_SOURCE
 };
 alpm_list_t *aur_srcinfo_values(aur_srcinfo_t *si, aur_si_pkg_t *pkg,
 		enum aur_si_field field, const char *arch);

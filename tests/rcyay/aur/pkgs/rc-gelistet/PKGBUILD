@@ -1,0 +1,7 @@
+pkgname=rc-gelistet
+pkgver=1.0
+pkgrel=1
+arch=(x86_64 x86_64_musl)
+license=(MIT)
+pkgdesc="rcyay Testpaket in nur-glibc.txt"
+package() { :; }

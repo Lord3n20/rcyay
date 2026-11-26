@@ -51,6 +51,7 @@ typedef struct {
 	int removemake;           /* --removemake (Standard aus rcyay.conf, ja) */
 	int nodiff;
 	int nocheck;
+	int force_musl;           /* --force-musl */
 	alpm_list_t *targets;     /* char* */
 	alpm_list_t *tokens;      /* char*: pacman-Optionen (ohne rcyay-eigene, ohne Ziele) */
 	alpm_list_t *global;      /* char*: Optionen für jeden pacman-Aufruf (--config …) */
@@ -67,6 +68,7 @@ typedef struct {
 	char *sudo;
 	char *init;
 	char *variant;
+	char *overlaydir;         /* Overlay (Standard /usr/share/rcyay/overlay): nur-glibc.txt, dienste/ */
 	int pgpfetch;               /* fehlende validpgpkeys importieren (PGPFetch, Standard ja) */
 	char *keyserver;          /* PGPKeyserver, NULL = gpg-Standard (wie yay) */
 	char *cli_aururl, *cli_builddir;

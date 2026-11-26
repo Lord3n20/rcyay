@@ -61,6 +61,7 @@ static void edge_free(void *p)
 static void base_free(aur_base_t *b)
 {
 	free(b->pkgbase);
+	free(b->arch);
 	aur_srcinfo_free(b->srcinfo);
 	FREELIST(b->pkgnames);
 	FREELIST(b->explicit);
@@ -155,6 +156,19 @@ static aur_base_t *add_pkg(state_t *st, aur_pkg_t *pkg, const char *pkgname, int
 		}
 		b->pkgbase = strdup(pkg->pkgbase);
 		b->srcinfo = si;
+		/* *_ARCH-Felder: Ziel-Arch, auf musl ohne x86_64_musl in arch=() die glibc-Arch */
+		{
+			const char *a = st->r->arch;
+			size_t al = a ? strlen(a) : 0;
+			if(a && al > 5 && strcmp(a + al - 5, "_musl") == 0 && !aur_srcinfo_supports_arch(si, NULL, a)) {
+				b->arch = strndup(a, al - 5);
+				if(b->arch && !aur_srcinfo_supports_arch(si, NULL, b->arch)) {
+					free(b->arch);
+					b->arch = NULL;
+				}
+			}
+			if(!b->arch && a) b->arch = strdup(a);
+		}
 		b->rpc = pkg;
 		st->all = alpm_list_add(st->all, b);
 	}
@@ -162,22 +176,32 @@ static aur_base_t *add_pkg(state_t *st, aur_pkg_t *pkg, const char *pkgname, int
 		add_error(st->plan, _("%s: package %s missing in .SRCINFO"), b->pkgbase, pkgname);
 		return NULL;
 	}
-	if(!aur_srcinfo_supports_arch(b->srcinfo, aur_srcinfo_find_pkg(b->srcinfo, pkgname),
-				st->r->arch)) {
+	{
 		const char *a = st->r->arch;
-		size_t al = a ? strlen(a) : 0;
+		aur_si_pkg_t *sp = aur_srcinfo_find_pkg(b->srcinfo, pkgname);
 		char glibc[64];
-		/* musl-Variante (x86_64_musl): Paket nur für die glibc-Architektur da? */
+		size_t al = a ? strlen(a) : 0;
+		/* musl-Variante (x86_64_musl): glibc-Arch daneben (x86_64) */
 		if(al > 5 && al < sizeof(glibc) && strcmp(a + al - 5, "_musl") == 0) {
 			memcpy(glibc, a, al - 5);
 			glibc[al - 5] = '\0';
 		} else {
 			glibc[0] = '\0';
 		}
-		if(glibc[0] && aur_srcinfo_supports_arch(b->srcinfo, aur_srcinfo_find_pkg(b->srcinfo, pkgname), glibc)) {
-			add_error(st->plan, _("%s: only for glibc (arch=%s), not available for %s"), pkgname, glibc, a);
-		} else {
-			add_error(st->plan, _("%s: not available for architecture %s"), pkgname, a ? a : "?");
+		if(!aur_srcinfo_supports_arch(b->srcinfo, sp, a)) {
+			if(glibc[0] && aur_srcinfo_supports_arch(b->srcinfo, sp, glibc)) {
+				/* nur arch=(x86_64): als Quell-Bau zulassen (--ignorearch) */
+				b->foreign_arch = 1;
+			} else {
+				add_error(st->plan, _("%s: not available for architecture %s"), pkgname, a ? a : "?");
+			}
+		}
+		if(glibc[0] && st->r->glibc_only) {
+			char *why = st->r->glibc_only(st->r->ud, b, pkgname);
+			if(why) {
+				add_error(st->plan, _("%s: only for glibc - %s"), pkgname, why);
+				free(why);
+			}
 		}
 	}
 	if(explicit) {
@@ -212,7 +236,7 @@ static aur_base_t *plan_satisfier(state_t *st, const char *dep, const char **pkg
 		aur_base_t *b = i->data;
 		for(alpm_list_t *j = b->srcinfo->pkgs; j; j = j->next) {
 			aur_si_pkg_t *p = j->data;
-			alpm_list_t *prov = aur_srcinfo_values(b->srcinfo, p, AUR_FIELD_PROVIDES, st->r->arch);
+			alpm_list_t *prov = aur_srcinfo_values(b->srcinfo, p, AUR_FIELD_PROVIDES, b->arch);
 			int ok = aur_dep_satisfied(dep, p->name, b->srcinfo->version, prov);
 			alpm_list_free(prov);
 			if(ok) {
@@ -325,19 +349,19 @@ static void process(state_t *st, work_t *w)
 	alpm_list_t *deps;
 	if(w->pkgname) {
 		aur_si_pkg_t *p = aur_srcinfo_find_pkg(si, w->pkgname);
-		deps = aur_srcinfo_values(si, p, AUR_FIELD_DEPENDS, st->r->arch);
+		deps = aur_srcinfo_values(si, p, AUR_FIELD_DEPENDS, w->base->arch);
 		for(alpm_list_t *i = deps; i; i = i->next) {
 			resolve_dep(st, w->base, w->pkgname, i->data, AUR_EDGE_RUN);
 		}
 		alpm_list_free(deps);
 	} else {
-		deps = aur_srcinfo_values(si, NULL, AUR_FIELD_MAKEDEPENDS, st->r->arch);
+		deps = aur_srcinfo_values(si, NULL, AUR_FIELD_MAKEDEPENDS, w->base->arch);
 		for(alpm_list_t *i = deps; i; i = i->next) {
 			resolve_dep(st, w->base, NULL, i->data, AUR_EDGE_MAKE);
 		}
 		alpm_list_free(deps);
 		if(!st->r->nocheck) {
-			deps = aur_srcinfo_values(si, NULL, AUR_FIELD_CHECKDEPENDS, st->r->arch);
+			deps = aur_srcinfo_values(si, NULL, AUR_FIELD_CHECKDEPENDS, w->base->arch);
 			for(alpm_list_t *i = deps; i; i = i->next) {
 				resolve_dep(st, w->base, NULL, i->data, AUR_EDGE_MAKE);
 			}

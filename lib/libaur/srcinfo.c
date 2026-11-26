@@ -43,6 +43,8 @@ static void fields_free(aur_si_fields_t *f)
 	alpm_list_free(f->provides);
 	alpm_list_free_inner(f->conflicts, archval_free);
 	alpm_list_free(f->conflicts);
+	alpm_list_free_inner(f->source, archval_free);
+	alpm_list_free(f->source);
 	alpm_list_free_inner(f->replaces, archval_free);
 	alpm_list_free(f->replaces);
 	FREELIST(f->arch);
@@ -94,6 +96,7 @@ static const struct fieldmap archfields[] = {
 	{ "provides", offsetof(aur_si_fields_t, provides), AUR_SI_PROVIDES },
 	{ "conflicts", offsetof(aur_si_fields_t, conflicts), AUR_SI_CONFLICTS },
 	{ "replaces", offsetof(aur_si_fields_t, replaces), AUR_SI_REPLACES },
+	{ "source", offsetof(aur_si_fields_t, source), AUR_SI_SOURCE },
 	{ NULL, 0, 0 }
 };
 
@@ -151,7 +154,7 @@ static int handle_field(aur_si_fields_t *f, int in_pkg, const char *key,
 		free(f->pkgdesc);
 		f->pkgdesc = strdup(value);
 	}
-	/* übrige Felder (source, sha256sums, url, license …) braucht rcyay nicht */
+	/* übrige Felder (sha256sums, url, license …) braucht rcyay nicht */
 	return 0;
 }
 

@@ -132,6 +132,7 @@ static int parse_long(int argc, char *argv[], int i)
 	if(strcmp(name, "topdown") == 0) { R.bottomup = 0; return 1; }
 	if(strcmp(name, "bottomup") == 0) { R.bottomup = 1; return 1; }
 	if(strcmp(name, "nocheck") == 0) { R.nocheck = 1; return 1; }
+	if(strcmp(name, "force-musl") == 0) { R.force_musl = 1; return 1; }
 	if(strcmp(name, "aururl") == 0 || strcmp(name, "builddir") == 0 ||
 			strcmp(name, "rcyayconf") == 0 || strcmp(name, "sortby") == 0) {
 		if(!val) {

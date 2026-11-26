@@ -311,6 +311,7 @@ void rc_usage(void)
 	fputs(_("    --removemake / --noremovemake  remove make dependencies afterwards (default: yes)\n"), stdout);
 	fputs(_("    --nodiff       do not show PKGBUILD/diff      --nocheck  skip check()\n"), stdout);
 	fputs(_("    --pgpfetch / --nopgpfetch  import missing validpgpkeys with gpg (default: yes)\n"), stdout);
+	fputs(_("    --force-musl   build -bin/binary-source packages on musl anyway (not nur-glibc.txt)\n"), stdout);
 	fputs("    --sortby votes|popularity|name|modified       --topdown / --bottomup\n", stdout);
 	printf(_("    --aururl URL   --builddir DIR   --rcyayconf FILE (default %s)\n\n"), RCYAY_CONF);
 }

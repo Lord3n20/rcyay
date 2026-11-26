@@ -94,6 +94,7 @@ static int conf_cb(const char *file, int line, const char *section,
 	else if(!strcmp(key, "Sudo")) set(&R.sudo, value);
 	else if(!strcmp(key, "Init")) set(&R.init, value);
 	else if(!strcmp(key, "Variant")) set(&R.variant, value);
+	else if(!strcmp(key, "Overlay")) set(&R.overlaydir, value);
 	else if(!strcmp(key, "SortBy")) set(&R.conf_sortby, value);
 	else if(!strcmp(key, "PGPKeyserver")) set(&R.keyserver, value);
 	else if(!strcmp(key, "PGPFetch")) {
@@ -144,6 +145,7 @@ int rc_readconf(void)
 	if(!R.aururl) R.aururl = strdup("https://aur.archlinux.org");
 	if(!R.repogiturl) R.repogiturl = strdup("https://gitlab.archlinux.org/archlinux/packaging/packages");
 	if(!R.builduser) R.builduser = strdup("rcyay-bau");
+	if(!R.overlaydir) R.overlaydir = strdup("/usr/share/rcyay/overlay");
 	if(!R.sudo) R.sudo = strdup(rc_have_program("sudo") || !rc_have_program("doas") ? "sudo" : "doas");
 	if(!R.builddir) {
 		R.builddir = strdup(geteuid() == 0 ? "/var/cache/rcyay" : "~/.cache/rcyay");

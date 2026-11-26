@@ -1,0 +1,9 @@
+pkgname=rc-debsrc
+pkgver=1.0
+pkgrel=1
+arch=(x86_64)
+license=(MIT)
+pkgdesc="rcyay Testpaket aus fertigem .deb"
+source=("https://example.invalid/rc-debsrc_1.0_amd64.deb")
+sha256sums=(SKIP)
+package() { :; }

@@ -17,6 +17,7 @@
 #include <dirent.h>
 #include <unistd.h>
 #include <ftw.h>
+#include <fnmatch.h>
 #include <sys/stat.h>
 
 #include "config.h"
@@ -133,6 +134,63 @@ static aur_pkg_t *cb_choose(void *ud, const char *dep, alpm_list_t *cands)
 			return alpm_list_nth(cands, (size_t)(sel - 1))->data;
 		}
 	}
+}
+
+/* musl: Paket geht nur mit glibc? (nur-glibc.txt, -bin/-appimage, fertige Binärpakete als Quelle) */
+static int ends_with(const char *s, const char *suf)
+{
+	size_t n = strlen(s), m = strlen(suf);
+	return n >= m && strcasecmp(s + n - m, suf) == 0;
+}
+
+static char *cb_glibc_only(void *ud, aur_base_t *b, const char *pkgname)
+{
+	char *path = NULL, *line = NULL, *why = NULL;
+	size_t cap = 0;
+	FILE *f;
+	alpm_list_t *src;
+	(void)ud;
+
+	if(asprintf(&path, "%s/nur-glibc.txt", R.overlaydir) >= 0 && (f = fopen(path, "r"))) {
+		while(!why && getline(&line, &cap, f) > 0) {
+			char *s = line, *e, *grund;
+			while(*s == ' ' || *s == '\t') s++;
+			if(*s == '#' || *s == '\n' || !*s) continue;
+			e = s + strcspn(s, " \t\n");
+			grund = e;
+			if(*e) {
+				*e = '\0';
+				grund = e + 1;
+				while(*grund == ' ' || *grund == '\t') grund++;
+				grund[strcspn(grund, "\n")] = '\0';
+			}
+			if(fnmatch(s, pkgname, 0) == 0 || fnmatch(s, b->pkgbase, 0) == 0) {
+				if(asprintf(&why, *grund ? _("listed in nur-glibc.txt (%s)") : _("listed in nur-glibc.txt"),
+							grund) < 0) why = NULL;
+			}
+		}
+		free(line);
+		fclose(f);
+	}
+	free(path);
+	if(why || R.force_musl) {
+		return why;
+	}
+	if(ends_with(pkgname, "-bin") || ends_with(pkgname, "-appimage")) {
+		return strdup(_("prebuilt binary package (use --force-musl to try anyway)"));
+	}
+	src = aur_srcinfo_values(b->srcinfo, NULL, AUR_FIELD_SOURCE, b->arch);
+	for(alpm_list_t *i = src; i && !why; i = i->next) {
+		const char *s = i->data;
+		if(ends_with(s, ".deb") || ends_with(s, ".rpm") || ends_with(s, ".appimage") ||
+				strstr(s, ".pkg.tar.")) {
+			const char *base = strrchr(s, '/');
+			if(asprintf(&why, _("source %s is a prebuilt binary (use --force-musl to try anyway)"),
+						base ? base + 1 : s) < 0) why = NULL;
+		}
+	}
+	alpm_list_free(src);
+	return why;
 }
 
 static aur_srcinfo_t *cb_srcinfo(void *ud, aur_pkg_t *pkg, char **err)
@@ -318,9 +376,10 @@ static int prepare_dir(job_t *j)
 
 static int makepkg(job_t *j, const char *a1, const char *a2, char **out)
 {
-	const char *argv[8];
+	const char *argv[10];
 	int k = 0;
 	argv[k++] = "makepkg";
+	if(j->b && j->b->foreign_arch) argv[k++] = "--ignorearch";
 	if(a1) argv[k++] = a1;
 	if(a2) argv[k++] = a2;
 	if(R.nocheck && a1 && strcmp(a1, "--packagelist") != 0 && strcmp(a1, "--printsrcinfo") != 0) {
@@ -723,9 +782,17 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 	res.providers = cb_providers;
 	res.srcinfo = cb_srcinfo;
 	res.choose = cb_choose;
+	res.glibc_only = cb_glibc_only;
 	plan = aur_resolve(&res, all);
 	if(!plan) {
 		goto done;
+	}
+	for(alpm_list_t *i = plan->bases; i; i = i->next) {
+		aur_base_t *b = i->data;
+		if(b->foreign_arch) {
+			rc_warn(_("%s: arch=() does not list %s - building from source anyway (untested on musl)\n"),
+					b->pkgbase, R.arch);
+		}
 	}
 	for(alpm_list_t *i = plan->bases; i; i = i->next) {
 		aur_base_t *b = i->data;

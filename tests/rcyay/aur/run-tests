@@ -33,6 +33,7 @@ mkdir -p "$W/repo"
 chown -R nobody: "$W/aur" "$W/aur-v2" "$W/repo-src" "$W/repo"
 srcinfo() { runuser -u nobody -- bash -c "cd '$1' && makepkg --printsrcinfo > .SRCINFO"; }
 # rc-pgp: signierte Quelle, Schlüssel nur auf dem Mock-Schlüsselserver (validpgpkeys)
+mkdir -p "$W/overlay"; printf '# Testliste\nrc-gelist*  braucht glibc-Symbole\n' > "$W/overlay/nur-glibc.txt"
 mkdir -p "$W/keys" "$W/aur/rc-pgp"
 export GNUPGHOME="$W/gpg-signer"; mkdir -m 700 "$GNUPGHOME"
 gpg --batch --quiet --passphrase '' --quick-gen-key 'rcyay Test <rcyay@test.invalid>' ed25519 sign never 2>/dev/null || { echo "Bail out! gpg-Schlüssel"; exit 2; }
@@ -68,6 +69,7 @@ AURURL = http://127.0.0.1:$PORT
 RepoGitURL = http://127.0.0.1:$PORT/gitlab
 BuildDir = $W/bau-root
 PGPKeyserver = hkp://127.0.0.1:$PORT
+Overlay = $W/overlay
 C
 grep -v BuildDir "$W/rcyay.conf" > "$W/rcyay-nutzer.conf"
 chmod 644 "$W"/*.conf
@@ -186,8 +188,22 @@ check "rcyay WORT: Auswahl 1 installiert" bash -c "[ $r = 0 ] && grep -q 'aur/rc
 sed -e '/^Architecture/d' -e 's/^\[options\]$/[options]\nArchitecture = x86_64_musl/' "$W/pacman.conf" > "$W/pacman-musl.conf"
 printf 'n\n' | "$RCYAY" --config "$W/pacman-musl.conf" --rcyayconf "$W/rcyay.conf" -S rc-musl >"$W/out" 2>&1
 check "musl: Plan ohne depends_x86_64 (bis zur Bau-Frage)" bash -c "grep -q 'Proceed with building' '$W/out' && ! grep -q rc-gibt-es-nicht-glibc '$W/out'"
-"$RCYAY" --config "$W/pacman-musl.conf" --rcyayconf "$W/rcyay.conf" -S --noconfirm rc-nurglibc >"$W/out" 2>&1; r=$?
-check "musl: arch=(x86_64) -> klare Meldung nur glibc" bash -c "[ $r != 0 ] && grep -q 'only for glibc (arch=x86_64), not available for x86_64_musl' '$W/out'"
+M() { "$RCYAY" --config "$W/pacman-musl.conf" --rcyayconf "$W/rcyay.conf" "$@" >"$W/out" 2>&1; }
+M -S --noconfirm rc-x86only; r=$?
+check "musl: arch=(x86_64) wird als Quell-Bau zugelassen (ungetestet)" bash -c "grep -q 'untested on musl' '$W/out' && ! grep -q 'only for glibc' '$W/out'"
+check "musl: ohne _x86_64_musl gelten die _x86_64-Felder" bash -c "[ $r != 0 ] && grep -q rc-gibt-es-nicht-x86 '$W/out'"
+M -S --noconfirm rc-foo-bin; r=$?
+check "musl: -bin -> nur glibc" bash -c "[ $r != 0 ] && grep -q 'rc-foo-bin: only for glibc - prebuilt binary' '$W/out'"
+M -S --noconfirm rc-debsrc; r=$?
+check "musl: .deb als Quelle -> nur glibc" bash -c "[ $r != 0 ] && grep -q 'rc-debsrc: only for glibc - source rc-debsrc_1.0_amd64.deb' '$W/out'"
+M -S --noconfirm rc-gelistet; r=$?
+check "musl: nur-glibc.txt (Muster) -> nur glibc mit Grund" bash -c "[ $r != 0 ] && grep -q 'listed in nur-glibc.txt (braucht glibc-Symbole)' '$W/out'"
+printf 'n\n' | M -S --force-musl rc-foo-bin
+check "--force-musl übersteuert -bin" bash -c "grep -q 'Proceed with building' '$W/out' && ! grep -q 'only for glibc' '$W/out'"
+M -S --noconfirm --force-musl rc-gelistet; r=$?
+check "--force-musl übersteuert nur-glibc.txt nicht" bash -c "[ $r != 0 ] && grep -q 'nur-glibc.txt' '$W/out'"
+R -S --noconfirm rc-foo-bin; r=$?
+check "glibc: -bin normal gebaut" [ $r = 0 ]
 R -S --noconfirm rc-musl; r=$?
 check "glibc: depends_x86_64 gilt (fehlende Abh. gemeldet)" bash -c "[ $r != 0 ] && grep -q rc-gibt-es-nicht-glibc '$W/out'"
 

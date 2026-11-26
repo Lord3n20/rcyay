@@ -1,7 +1,7 @@
-pkgname=rc-nurglibc
+pkgname=rc-foo-bin
 pkgver=1.0
 pkgrel=1
 arch=(x86_64)
 license=(MIT)
-pkgdesc="rcyay Testpaket nur fuer glibc"
+pkgdesc="rcyay Testpaket -bin"
 package() { :; }
