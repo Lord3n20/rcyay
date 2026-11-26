@@ -1,3 +1,5 @@
+# musl: __xstat & Co. sind nur Kompatibilitätssymbole (stat() ruft sie nicht) → nicht einwickeln,
+# sonst sieht libarchive die echten Besitzer (Befund 26.11.).
 # Debian-Release-Tarball (1.37.1.1) statt git-Archiv; ohne po4a-Handbücher und capset-Hülle (musl)
 pkgver=1.37.1.1
 usrside_tarball https://deb.debian.org/debian/pool/main/f/fakeroot/fakeroot_1.37.1.1.orig.tar.gz \
@@ -8,7 +10,9 @@ prepare() { :; }
 build() {
 	cd fakeroot-archive
 	./configure --prefix=/usr --libdir=/usr/lib/libfakeroot --disable-static --with-ipc=sysv \
-		ac_cv_func_capset=no
+		ac_cv_func_capset=no \
+		ac_cv_func___xstat=no ac_cv_func___lxstat=no ac_cv_func___fxstat=no ac_cv_func___fxstatat=no \
+		ac_cv_func___xmknod=no ac_cv_func___xmknodat=no
 	make
 }
 package() {

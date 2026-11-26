@@ -146,7 +146,8 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	while IFS= read -r f; do [[ -e $f ]] && liste+=("$f"); done <<<"$dateien"
 	((${#liste[@]})) || abbruch "$name: makepkg hat keine Pakete erzeugt"
 	[[ $flags == *-ohne-install* ]] && return 0
-	"$(paketmanager)" -U --noconfirm --needed --overwrite '*' -dd "${liste[@]}"
+	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
+	"$(paketmanager)" -U --noconfirm --overwrite '*' -dd "${liste[@]}"
 	rm -rf /var/tmp/bau/"$name"
 }
 
