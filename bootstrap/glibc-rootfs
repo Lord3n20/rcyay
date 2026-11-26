@@ -71,6 +71,12 @@ bauen() {
 			tar -x -C "$d" --strip-components=3
 		# musl-Variante → glibc: nur die Laufzeit-Abhängigkeit tauschen
 		sed -i -E '/^(make)?depends=/s/\bmusl\b/glibc/' "$d/PKGBUILD"
+		# Ordner als Quelle (source=(dateien)) kennt Arch-makepkg nicht → vorab nach src/ legen
+		if grep -q '^source=(dateien)' "$d/PKGBUILD"; then
+			sed -i -e 's/^source=(dateien)/source=()/' -e 's/^sha256sums=(SKIP)/sha256sums=()/' "$d/PKGBUILD"
+			mkdir -p "$d/src"
+			cp -r "$d/dateien" "$d/src/"
+		fi
 	fi
 	chown -R "$NUTZER": "$W/pkg"
 	local dep

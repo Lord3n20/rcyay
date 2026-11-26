@@ -1,0 +1,42 @@
+#!/bin/bash
+# Nur zum Testen (rcyay-e1d): qcow2 aus bootstrap/glibc-rootfs ohne den Kernelbau von bootstrap/abbild.
+# Das echte Abbild macht `VARIANTE=glibc bootstrap/abbild --rootfs DIR` (rcyay-e2); dieses Skript bildet
+# dessen Vertrag nach (GPT ESP + btrfs @/@home, fstab, Schlüssel, .vmlinuz/.cmdline/.inits/.commit).
+#   test-abbild ROOTFS KERNEL.tar AUS     (als root in einer Wegwerf-VM)
+#   KERNEL.tar: ./vmlinuz + ./usr/lib/modules/VERSION/ (modules_install, ohne depmod)
+set -euo pipefail
+ROOTFS=$1 KT=$2 AUS=$3
+GROESSE=${GROESSE:-16G}
+SCHLUESSEL=${SCHLUESSEL:-/root/.ssh/authorized_keys}
+CMDLINE="root=/dev/vda2 rootfstype=btrfs rootflags=subvol=@ rw"
+W=$(mktemp -d /var/tmp/test-abbild.XXXX); M=$W/mnt; L=""
+weg() { umount -R "$M" 2>/dev/null || :; [ -n "$L" ] && losetup -d "$L"; rm -rf "$W/k" "$W/roh"; }
+trap weg EXIT
+mkdir -p "$W/k" "$M" "$AUS"
+tar -C "$W/k" -xf "$KT"
+truncate -s "$GROESSE" "$W/roh"
+printf 'label: gpt\nsize=256MiB, type=uefi, name=esp\ntype=linux, name=usrside\n' | sfdisk -q "$W/roh"
+L=$(losetup -P -f --show "$W/roh")
+mkfs.vfat -F 32 -n ESP "${L}p1" >/dev/null
+mkfs.btrfs -q -f -L usrside "${L}p2"
+mount "${L}p2" "$M"; btrfs -q subvolume create "$M/@"; btrfs -q subvolume create "$M/@home"; umount "$M"
+mount -o subvol=@,compress=zstd "${L}p2" "$M"
+cp -a --preserve=all "$ROOTFS/." "$M/"
+mkdir -p "$M/home" "$M/efi"
+mount -o subvol=@home "${L}p2" "$M/home"; mount "${L}p1" "$M/efi"
+cp -a "$W/k/usr/lib/modules" "$M/usr/lib/"
+v=$(ls "$M/usr/lib/modules" | head -n1)
+depmod -b "$M/usr" "$v"
+install -Dm644 "$W/k/vmlinuz" "$M/efi/EFI/BOOT/BOOTX64.EFI"
+install -Dm644 "$W/k/vmlinuz" "$M/boot/vmlinuz-usrkrnl"
+install -dm700 "$M/root/.ssh"; install -m600 "$SCHLUESSEL" "$M/root/.ssh/authorized_keys"
+printf 'LABEL=usrside /home btrfs subvol=@home,compress=zstd 0 0\nLABEL=ESP /efi vfat noauto,umask=0077 0 2\n' >"$M/etc/fstab"
+echo usrside-glibc >"$M/etc/hostname"
+sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$M/etc/ssh/sshd_config"
+sync; umount -R "$M"; losetup -d "$L"; L=""
+qemu-img convert -c -O qcow2 "$W/roh" "$AUS/usrside-glibc.qcow2"
+install -m644 "$W/k/vmlinuz" "$AUS/usrside-glibc.vmlinuz"
+echo "$CMDLINE" >"$AUS/usrside-glibc.cmdline"
+cp "$ROOTFS/usr/share/usrside/inits" "$AUS/usrside-glibc.inits"
+echo "${ABBILD_COMMIT:-unbekannt}" >"$AUS/usrside-glibc.commit"
+ls -l "$AUS"/usrside-glibc.*
