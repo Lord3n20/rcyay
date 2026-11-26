@@ -224,8 +224,6 @@ for i in busybox s6 runit; do
 	"$RCW" --root "$ZIEL" --rcyayconf "$W/rcyay-$i.conf" --services apply
 done
 setze Init "$INIT" "$ZIEL/etc/rcyay.conf"
-# runit-sv sucht ohne SVDIR in /service; Notbehelf, solange sv.c nicht auf /var/service gepatcht ist
-grep -q /var/service "$ZIEL/usr/bin/sv" || ln -sfn var/service "$ZIEL/service"
 # Init-Pfade für init= (Vertrag mit abbild / test-rcyay)
 install -d "$ZIEL/usr/share/usrside"
 cat >"$ZIEL/usr/share/usrside/inits" <<-'EOF'
