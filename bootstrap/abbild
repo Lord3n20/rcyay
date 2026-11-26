@@ -25,6 +25,7 @@
 #   usrside-VARIANTE-live.inits, …-live.commit
 # Umgebung: GROESSE (Standard 12G), SCHLUESSEL (authorized_keys für root, Standard /root/.ssh/authorized_keys),
 #   USRKRNL (Standard /root/usrsideos/usrkrnl bzw. ~/usrsideos/usrkrnl), PAKETE (Standard: alle aus dem Repo),
+#   OHNE (Pakete, die im Repo bleiben, aber nicht installiert werden; Standard patch),
 #   KERNEL_NUTZER (normaler Nutzer für usrkrnl/setup, Standard bau), BUSYBOX_REPO (Repo mit busybox und musl
 #   fürs Initramfs, Standard $ARBEIT/musl/repo – das Initramfs ist für beide Varianten musl)
 set -euo pipefail
@@ -198,6 +199,9 @@ pakete_installieren() { # pakete_installieren ZIEL
 	# -Sy getrennt: sonst landen Fortschrittsmeldungen in der Paketliste
 	chroot "$WURZEL" env LC_ALL=C "$pm" -Sy >/dev/null
 	pakete=${PAKETE:-$(chroot "$WURZEL" env LC_ALL=C "$pm" -Slq "$REPONAME" | sort -u | tr '\n' ' ')}
+	# OHNE: im Repo lassen, aber nicht installieren (Standard patch – Testpaket für rcyay -S im Abbild)
+	local o
+	for o in ${OHNE-patch}; do pakete=" $pakete "; pakete=${pakete// $o / }; done
 	meldung "installiere: $pakete"
 	# shellcheck disable=SC2086
 	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild --cachedir /mnt/abbild/var/cache/pacman/pkg \
@@ -219,8 +223,19 @@ rootfs_bauen() {
 		pakete_installieren "$RFS"
 	fi
 
-	# Heimordner des Nutzers bau gehört ihm (Pakete sind root:root, siehe besitzer-reparieren)
-	[[ -d $RFS/home/bau ]] && chown 1000:1000 "$RFS/home/bau"
+	# Bau-Nutzer bau (1000) ist nur für den stage2-chroot da: im Abbild entfernen (Befund t1)
+	sed -i '/^bau:/d' "$RFS/etc/passwd" "$RFS/etc/group" "$RFS/etc/shadow"
+	rm -rf "$RFS/home/bau"
+	# rcyay legt seinen Bau-Nutzer mit Gruppe nogroup an (BusyBox adduser -G nogroup)
+	grep -q '^nogroup:' "$RFS/etc/group" || printf 'nogroup:x:65533:\n' >>"$RFS/etc/group"
+	# pacman.conf/makepkg.conf wie im Paket rcyay (die Pakete wurden aus dem stage2-chroot wiederhergestellt,
+	# dessen Fassungen auf /usrside/repo zeigen – Befund t1)
+	if [[ -z $ROOTFS ]]; then
+		install -m644 "$BOOTSTRAP/pakete/rcyay/pacman.conf" "$RFS/etc/pacman.conf"
+		install -m644 "$BOOTSTRAP/pakete/rcyay/makepkg.conf" "$RFS/etc/makepkg.conf"
+	fi
+	grep -q "file:///srv/$REPONAME" "$RFS/etc/pacman.conf" || [[ -n $ROOTFS ]] ||
+		abbruch "pacman.conf zeigt nicht auf file:///srv/$REPONAME"
 	# Kontrolle: außer /home darf nichts dem Bau-Nutzer (1000) gehören (Befund t1: sshd und /var/empty)
 	local fremd
 	fremd=$(find "$RFS" -xdev \( -path "$RFS/home" -prune \) -o \( -uid 1000 -print -quit \))
