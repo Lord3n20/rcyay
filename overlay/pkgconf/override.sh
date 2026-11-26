@@ -1,0 +1,4 @@
+# Release-Tarball statt git
+usrside_tarball https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.11.tar.xz \
+	d0cd841bc8e55b9da888106c00dc256d05b7d1d8e5a46f4be4eb4c5125bd2dc4
+prepare() { :; }

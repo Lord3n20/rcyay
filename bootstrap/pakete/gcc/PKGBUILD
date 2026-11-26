@@ -1,0 +1,78 @@
+# GCC für musl (C, C++), aufgeteilt in gcc und gcc-libs wie bei Arch
+pkgbase=gcc
+pkgname=(gcc gcc-libs)
+pkgver=16.2.0
+pkgrel=1
+pkgdesc='The GNU Compiler Collection (musl)'
+arch=(x86_64)
+url='https://gcc.gnu.org'
+license=('GPL-3.0-with-GCC-exception' 'GFDL-1.3-or-later')
+makedepends=(binutils gmp mpfr libmpc zlib zstd)
+options=(!emptydirs !lto)
+source=("https://ftp.gnu.org/gnu/gcc/gcc-$pkgver/gcc-$pkgver.tar.xz")
+sha256sums=('e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e')
+
+prepare() {
+	cd "gcc-$pkgver"
+	sed -i '/m64=/s/lib64/lib/' gcc/config/i386/t-linux64
+	# opt-gather.awk liest beim Einfügesortieren ARRAY[0] (j bis 1): gawk auf musl wertet "" > Text
+	# als wahr und verliert den ersten Eintrag ("###Driver") → kaputte Optionstabelle. Grenze j > 1.
+	sed -i 's/for (j = i; ARRAY\[j-1\] > ARRAY\[j\]; --j)/for (j = i; j > 1 \&\& ARRAY[j-1] > ARRAY[j]; --j)/' gcc/opt-gather.awk
+	grep -q 'j > 1 && ARRAY' gcc/opt-gather.awk
+	# Gleiches Muster in optc-gen.awk: nach `arr[x] == ""` wird das neue Element bei gawk-auf-musl
+	# zu "0" ("0Wabsolute-value does not have a Var() flag") – deshalb per `in` prüfen.
+	sed -i -e 's/if (enables\[enabledby_name\] == "")/if (!(enabledby_name in enables))/' \
+		-e 's/if (enables\[lang_name,enabledby_array\[k\]\] == "")/if (!((lang_name,enabledby_array[k]) in enables))/' \
+		gcc/optc-gen.awk
+	[[ $(grep -c ' in enables))' gcc/optc-gen.awk) == 2 ]]
+	rm -rf "$srcdir/gcc-build"
+	mkdir -p "$srcdir/gcc-build"
+}
+
+build() {
+	cd "$srcdir/gcc-build"
+	# schlichte Flags wie in stage1: -Wp,-D_GLIBCXX_ASSERTIONS u. ä. brechen libstdc++ (c++98-Teil)
+	export CFLAGS="-O2 -pipe -fstack-clash-protection" CXXFLAGS="-O2 -pipe -fstack-clash-protection"
+	"$srcdir/gcc-$pkgver/configure" --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib \
+		--mandir=/usr/share/man --infodir=/usr/share/info \
+		--build="$CHOST" --host="$CHOST" --target="$CHOST" \
+		--enable-languages=c,c++ --enable-shared --enable-threads=posix --enable-tls \
+		--enable-__cxa_atexit --enable-lto --enable-plugin --enable-default-pie \
+		--enable-default-ssp --enable-initfini-array --enable-linker-build-id \
+		--with-linker-hash-style=gnu --enable-checking=release --disable-multilib \
+		--disable-nls --disable-werror --disable-libsanitizer --disable-libssp \
+		--disable-symvers --disable-libstdcxx-pch --disable-fixed-point --disable-cet \
+		--disable-libcc1 --enable-libstdcxx-time --disable-bootstrap \
+		--with-arch=x86-64 --with-tune=generic --with-system-zlib
+	make
+}
+
+package_gcc() {
+	depends=("gcc-libs=$pkgver-$pkgrel" binutils gmp mpfr libmpc zlib zstd)
+	provides=(cc c++ cpp)
+	cd "$srcdir/gcc-build"
+	make DESTDIR="$pkgdir" install
+	# versionierte Laufzeit-Bibliotheken wandern nach gcc-libs (die .so-Entwicklerlinks bleiben)
+	rm -rf "$srcdir/gcc-libs"
+	mkdir -p "$srcdir/gcc-libs/usr/lib"
+	local f
+	for f in "$pkgdir"/usr/lib/lib{gcc_s,stdc++,gomp,atomic,quadmath,itm}.so.*; do
+		[[ -e $f || -L $f ]] || continue
+		case $f in *.py) rm -f "$f" ;; *) mv "$f" "$srcdir/gcc-libs/usr/lib/" ;; esac
+	done
+	rm -f "$pkgdir"/usr/lib/*.py "$pkgdir"/usr/lib/*.la
+	ln -sf gcc "$pkgdir/usr/bin/cc"
+	ln -sf g++ "$pkgdir/usr/bin/c++"
+	ln -sf ../bin/cpp "$pkgdir/usr/lib/cpp"
+	install -dm755 "$pkgdir/usr/lib/bfd-plugins"
+	ln -sf "../gcc/$CHOST/$pkgver/liblto_plugin.so" "$pkgdir/usr/lib/bfd-plugins/"
+	install -Dm644 "$srcdir/gcc-$pkgver/COPYING.RUNTIME" -t "$pkgdir/usr/share/licenses/$pkgname"
+}
+
+package_gcc-libs() {
+	pkgdesc='Runtime libraries shipped by GCC (musl)'
+	depends=(musl)
+	provides=(libgcc libstdc++ libgomp libatomic libgcc_s.so libstdc++.so libgomp.so libatomic.so)
+	cp -a "$srcdir/gcc-libs/." "$pkgdir/"
+	install -Dm644 "$srcdir/gcc-$pkgver/COPYING.RUNTIME" -t "$pkgdir/usr/share/licenses/$pkgname"
+}

@@ -1,0 +1,35 @@
+# rcyay (Fork von pacman 7.1.0) mit makepkg; Quelle: git archive von ~/rcyay (bootstrap/stage2 legt
+# rcyay-src.tar.gz und rcyay.ver neben dieses PKGBUILD)
+pkgname=rcyay
+pkgver=$(cat rcyay.ver 2>/dev/null || echo 7.1.0)
+pkgrel=1
+pkgdesc='Package manager of UsrsideOS: pacman fork that also builds from the AUR'
+arch=(x86_64)
+url='https://github.com/Lord3n20/rcyay'
+license=(GPL-2.0-or-later)
+depends=(bash curl gpgme libarchive openssl musl)
+makedepends=(meson python)
+provides=(pacman "pacman=7.1.0" libalpm.so)
+conflicts=(pacman)
+backup=(etc/pacman.conf etc/makepkg.conf etc/rcyay.conf)
+options=(!lto)
+source=(rcyay-src.tar.gz pacman.conf makepkg.conf)
+sha256sums=(SKIP SKIP SKIP)
+
+build() {
+	local opt=()
+	grep -q "'file-seccomp'" rcyay/meson_options.txt && opt+=(-Dfile-seccomp=disabled)
+	meson setup build rcyay --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+		--libexecdir=/usr/lib --sbindir=/usr/bin --buildtype=plain \
+		-Ddoc=disabled -Di18n=false -Dcurl=enabled -Dgpgme=enabled -Dcrypto=openssl \
+		-Dscriptlet-shell=/usr/bin/bash -Dldconfig=/usr/bin/ldconfig -Dpkg-ext=.pkg.tar.zst "${opt[@]}"
+	meson compile -C build
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install -C build --no-rebuild
+	install -Dm644 pacman.conf "$pkgdir/etc/pacman.conf"
+	install -Dm644 makepkg.conf "$pkgdir/etc/makepkg.conf"
+	[[ -e $pkgdir/etc/rcyay.conf ]] || : >"$pkgdir/etc/rcyay.conf"
+	install -dm755 "$pkgdir/var/lib/pacman" "$pkgdir/var/cache/pacman/pkg"
+}

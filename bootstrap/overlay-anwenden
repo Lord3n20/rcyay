@@ -1,0 +1,37 @@
+#!/bin/bash
+# overlay-anwenden PKGBUILD-ORDNER OVERLAY-WURZEL NAME ZIEL
+# Kopiert den PKGBUILD-Ordner nach ZIEL und wendet overlay/NAME an (PLAN.md 1.2):
+#   PKGBUILD      ersetzt das Arch-PKGBUILD ganz (eigene Pakete stehen in bootstrap/pakete)
+#   PKGBUILD.sed  sed-Skript für das PKGBUILD
+#   override.sh   wird (mit overlay/usrside-overlay.sh) angehängt, setzt Variablen/Funktionen neu
+#   *.patch       werden vor prepare() angewendet
+#   sonstige Dateien landen neben dem PKGBUILD (für source=(…))
+set -euo pipefail
+quelle=$1 ow=$2 name=$3 ziel=$4
+ov=$ow/$name
+rm -rf "$ziel"
+mkdir -p "$ziel"
+cp -a "$quelle/." "$ziel/"
+rm -rf "$ziel/.git" "$ziel/.SRCINFO"
+[[ -d $ov ]] || ov=
+if [[ -n $ov && -f $ov/PKGBUILD ]]; then cp "$ov/PKGBUILD" "$ziel/PKGBUILD"; fi
+if [[ -n $ov && -f $ov/PKGBUILD.sed ]]; then sed -i -f "$ov/PKGBUILD.sed" "$ziel/PKGBUILD"; fi
+patches=()
+if [[ -n $ov ]]; then
+	for f in "$ov"/*; do
+		[[ -e $f ]] || continue
+		case ${f##*/} in
+		PKGBUILD | PKGBUILD.sed | override.sh | README*) ;;
+		*.patch) mkdir -p "$ziel/usrside-patches"; cp "$f" "$ziel/usrside-patches/"; patches+=("${f##*/}") ;;
+		*) cp -a "$f" "$ziel/" ;;
+		esac
+	done
+fi
+{
+	echo
+	echo "# ---- UsrsideOS-Overlay ($name, angehängt von bootstrap/overlay-anwenden) ----"
+	cat "$ow/usrside-overlay.sh"
+	echo "_usrside_patchliste='${patches[*]}'"
+	if [[ -n $ov && -f $ov/override.sh ]]; then cat "$ov/override.sh"; fi
+	echo "usrside_abschluss"
+} >>"$ziel/PKGBUILD"

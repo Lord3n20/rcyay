@@ -1,0 +1,47 @@
+#!/bin/bash
+# stage2: Selbstbau im chroot. Das Sysroot aus stage1 baut die Basis noch einmal – diesmal als Pakete
+# mit makepkg/rcyay aus Arch-PKGBUILDs (+ overlay/) bzw. bootstrap/pakete/ – und installiert jedes
+# Paket sofort in den chroot (Paketdatenbank korrekt). Ergebnis: Repo $ARBEIT/$VARIANTE/repo/usrside-musl.
+#   bootstrap/stage2 [PAKET …]      ohne PAKET: ganze Liste bootstrap/stage2-liste
+#   LISTE=m5-liste bootstrap/stage2 [PAKET …]   andere Liste (M5: Desktop-Quellbauten), gleicher chroot/Repo
+# Ablauf im chroot (bootstrap/stage2-innen): Vorbau (perl, python, meson, GNU-Werkzeuge nativ, ohne
+# Paket) → für jedes Paket: PKGBUILD holen (Prüfsumme), Overlay anwenden, makepkg als Nutzer bau, rcyay -U.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+((EUID == 0)) || abbruch "stage2 braucht root (chroot, mount)"
+[[ -x $WURZEL/usr/bin/makepkg ]] || abbruch "kein Sysroot $WURZEL – zuerst bootstrap/stage1"
+OVERLAY=${OVERLAY:-$BOOTSTRAP/../overlay}
+REPO=$ARBEIT/$VARIANTE/repo
+PKGQUELLEN=$ARBEIT/pkgquellen
+mkdir -p "$REPO" "$PKGQUELLEN" "$QUELLEN" "$LOGS"
+
+trap aushaengen EXIT
+
+chroot_grund "$WURZEL"
+einhaengen "$WURZEL" "$(cd "$BOOTSTRAP" && pwd)" /usrside/bootstrap --bind -o ro
+einhaengen "$WURZEL" "$(cd "$OVERLAY" && pwd)" /usrside/overlay --bind -o ro
+einhaengen "$WURZEL" "$QUELLEN" /usrside/quellen --bind
+einhaengen "$WURZEL" "$PKGQUELLEN" /usrside/pkgquellen --bind
+einhaengen "$WURZEL" "$REPO" /usrside/repo --bind
+einhaengen "$WURZEL" "$LOGS" /usrside/logs --bind
+mkdir -p "$WURZEL/usrside/fertig"
+einhaengen "$WURZEL" "$FERTIG" /usrside/fertig --bind
+cp -L /etc/resolv.conf "$WURZEL/etc/resolv.conf"
+# rcyay-Quelle für bootstrap/pakete/rcyay (git archive des Stands RCYAY_REF)
+if [[ -z ${RCYAY_QUELLE:-} ]]; then
+	for d in /root/rcyay "$HOME/rcyay" "$BOOTSTRAP/.."; do
+		[[ -e $d/meson.build ]] && { RCYAY_QUELLE=$(cd "$d" && pwd); break; }
+	done
+fi
+mkdir -p "$PKGQUELLEN/eigen/rcyay"
+g=(git -c safe.directory='*' -C "$RCYAY_QUELLE")
+"${g[@]}" archive --format=tar.gz --prefix=rcyay/ "${RCYAY_REF:-main}" >"$PKGQUELLEN/eigen/rcyay/rcyay-src.tar.gz"
+printf '7.1.0.r%s.g%s\n' "$("${g[@]}" rev-list --count "${RCYAY_REF:-main}")" \
+	"$("${g[@]}" rev-parse --short=8 "${RCYAY_REF:-main}")" >"$PKGQUELLEN/eigen/rcyay/rcyay.ver"
+chown 1000:1000 "$PKGQUELLEN" "$REPO"
+
+meldung "stage2 im chroot $WURZEL"
+chroot "$WURZEL" /usr/bin/env -i HOME=/root TERM=dumb PATH=/usr/bin:/usr/local/bin \
+	VARIANTE="$VARIANTE" LISTE="${LISTE:-stage2-liste}" JOBS="$JOBS" NEU="${NEU:-0}" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+	/usr/bin/bash /usrside/bootstrap/stage2-innen "$@"
+meldung "stage2 fertig: $REPO"

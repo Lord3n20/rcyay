@@ -1,0 +1,170 @@
+#!/bin/bash
+# stage0: Kreuz-Toolchain $ZIEL nach $TC (binutils, gcc C/C++, musl bzw. glibc, Linux-Header).
+#   VARIANTE=musl bootstrap/stage0        (Standard; glibc: VARIANTE=glibc, Vorarbeit M4)
+# Ablauf (wie CLFS/musl-cross-make): Header → binutils → gcc pass1 (nur C, ohne libc)
+#   → libc ins Toolchain-Sysroot $TC/$ZIEL/sysroot → gcc pass2 (C, C++, shared, threads).
+# Läuft auf einem Arch-Bauwirt (base-devel); als root oder mit Schreibrecht auf $TC.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+brauche gcc g++ make bison flex makeinfo xz bzip2 perl python3 rsync
+
+export PATH=$TC/bin:$PATH
+unset CC CXX CFLAGS CXXFLAGS LDFLAGS CPPFLAGS PKG_CONFIG_PATH
+mkdir -p "$TC" "$TCSYS/usr/lib" "$TCSYS/usr/include"
+# usr-merge wie im fertigen System; lib64 zeigt auf lib (gcc für x86_64 sucht sonst lib64)
+for d in lib lib64 usr/lib64; do [[ -e $TCSYS/$d ]] || ln -s "$([[ $d == usr/* ]] && echo lib || echo usr/lib)" "$TCSYS/$d"; done
+[[ -e $TCSYS/bin ]] || ln -s usr/bin "$TCSYS/bin"
+mkdir -p "$TCSYS/usr/bin"
+
+gcc_gemeinsam=(
+	--target="$ZIEL" --prefix="$TC" --with-sysroot="$TCSYS"
+	--disable-multilib --disable-nls --disable-werror --disable-libsanitizer
+	--enable-default-pie --enable-default-ssp --enable-initfini-array
+	--enable-linker-build-id --with-linker-hash-style=gnu --disable-cet
+	--with-arch=x86-64 --with-tune=generic
+)
+
+header() {
+	local src
+	src=$(auspacken linux)
+	make -C "$src" ARCH=x86_64 mrproper
+	make -C "$src" ARCH=x86_64 INSTALL_HDR_PATH="$BAU/hdr" headers_install
+	cp -a "$BAU/hdr/include/." "$TCSYS/usr/include/"
+	rm -rf "$src" "$BAU/hdr"
+}
+
+binutils() {
+	local src
+	src=$(auspacken binutils)
+	mkdir -p "$BAU/binutils-bau"
+	cd "$BAU/binutils-bau"
+	"$src/configure" --target="$ZIEL" --prefix="$TC" --with-sysroot="$TCSYS" \
+		--disable-nls --disable-werror --disable-multilib --disable-gprofng \
+		--enable-deterministic-archives --enable-ld=default \
+		--enable-plugins --enable-64-bit-bfd
+	make -j"$JOBS"
+	make install
+	cd "$BAU"
+	rm -rf "$BAU/binutils-bau" "$src"
+}
+
+# gcc-Quellen einmal auspacken: gmp/mpfr/mpc im Baum, lib64 → lib (wie Arch)
+gcc_quellen() {
+	local src
+	src=$(auspacken gcc "$BAU/gcc-src")
+	ln -sfn "$(auspacken gmp)" "$src/gmp"
+	ln -sfn "$(auspacken mpfr)" "$src/mpfr"
+	ln -sfn "$(auspacken mpc)" "$src/mpc"
+	sed -i '/m64=/s/lib64/lib/' "$src/gcc/config/i386/t-linux64"
+	flicken "$src" gcc
+	printf '%s\n' "$src" >"$BAU/gcc-src.pfad"
+}
+
+gcc1() {
+	local src
+	src=$(<"$BAU/gcc-src.pfad")
+	rm -rf "$BAU/gcc1-bau"
+	mkdir -p "$BAU/gcc1-bau"
+	cd "$BAU/gcc1-bau"
+	"$src/configure" "${gcc_gemeinsam[@]}" \
+		--enable-languages=c --with-newlib --without-headers \
+		--disable-shared --disable-threads --disable-libatomic --disable-libgomp \
+		--disable-libquadmath --disable-libssp --disable-libvtv --disable-libstdcxx \
+		--disable-decimal-float --disable-libitm
+	make -j"$JOBS" all-gcc all-target-libgcc
+	make install-gcc install-target-libgcc
+	cd "$BAU"
+	rm -rf "$BAU/gcc1-bau"
+}
+
+libc_musl() {
+	local src
+	src=$(auspacken musl)
+	flicken "$src" musl
+	cd "$src"
+	./configure --prefix=/usr --syslibdir=/usr/lib --target="$ZIEL" \
+		CROSS_COMPILE="$ZIEL-" CC="$ZIEL-gcc"
+	make -j"$JOBS"
+	make DESTDIR="$TCSYS" install
+	# Lader-Pfad /lib/ld-musl-x86_64.so.1 (lib → usr/lib): absoluter Link wäre im Sysroot falsch
+	ln -sf libc.so "$TCSYS/usr/lib/ld-musl-x86_64.so.1"
+	cd "$BAU"
+	rm -rf "$src"
+}
+
+libc_glibc() {
+	local src
+	src=$(auspacken glibc)
+	flicken "$src" glibc
+	rm -rf "$BAU/glibc-bau"
+	mkdir -p "$BAU/glibc-bau"
+	cd "$BAU/glibc-bau"
+	printf "%s\n" slibdir=/usr/lib rtlddir=/usr/lib sbindir=/usr/bin rootsbindir=/usr/bin >configparms
+	"$src/configure" --prefix=/usr --libdir=/usr/lib --libexecdir=/usr/lib \
+		--host="$ZIEL" --build="$(gcc -dumpmachine)" \
+		--with-headers="$TCSYS/usr/include" --enable-kernel=5.4 \
+		--disable-werror --enable-stack-protector=strong --enable-bind-now \
+		--disable-nscd --disable-timezone-tools \
+		libc_cv_slibdir=/usr/lib libc_cv_rtlddir=/usr/lib
+	make -j"$JOBS"
+	make DESTDIR="$TCSYS" install
+	mkdir -p "$TCSYS/usr/lib64"
+	cd "$BAU"
+	rm -rf "$BAU/glibc-bau" "$src"
+}
+
+gcc2() {
+	local src
+	src=$(<"$BAU/gcc-src.pfad")
+	local extra=()
+	[[ $VARIANTE == musl ]] && extra=(--disable-libssp --disable-symvers --enable-libstdcxx-time)
+	rm -rf "$BAU/gcc2-bau"
+	mkdir -p "$BAU/gcc2-bau"
+	cd "$BAU/gcc2-bau"
+	"$src/configure" "${gcc_gemeinsam[@]}" "${extra[@]}" \
+		--enable-languages=c,c++ --enable-shared --enable-threads=posix \
+		--enable-tls --enable-__cxa_atexit --enable-lto --enable-plugin \
+		--disable-libstdcxx-pch --disable-fixed-point --enable-checking=release \
+		--with-build-sysroot="$TCSYS"
+	make -j"$JOBS"
+	make install
+	cd "$BAU"
+	rm -rf "$BAU/gcc2-bau"
+}
+
+pruefen() {
+	local t=$BAU/probe
+	mkdir -p "$t"
+	printf '#include <stdio.h>\nint main(void){puts("hallo");return 0;}\n' >"$t/a.c"
+	printf '#include <iostream>\n#include <thread>\nint main(){std::thread t([]{std::cout<<"hallo\\n";});t.join();}\n' >"$t/b.cc"
+	"$ZIEL-gcc" -O2 -o "$t/a" "$t/a.c"
+	"$ZIEL-g++" -O2 -o "$t/b" "$t/b.cc"
+	"$ZIEL-gcc" -static -o "$t/s" "$t/a.c"
+	readelf -l "$t/a" | grep -F "$LADER"
+	pruefe_elf "$t"
+	pruefe_elf "$TCSYS/usr/lib"
+	# statisches Programm läuft auf jedem Linux-Wirt
+	[[ $("$t/s") == hallo ]]
+	if [[ $VARIANTE == musl ]]; then
+		# dynamische Programme mit dem Lader aus dem Sysroot starten
+		[[ $("$TCSYS/usr/lib/libc.so" "$t/a") == hallo ]]
+		[[ $(LD_LIBRARY_PATH="$TC/$ZIEL/lib:$TCSYS/usr/lib" "$TCSYS/usr/lib/libc.so" "$t/b") == hallo ]]
+	fi
+	rm -rf "$t"
+	"$ZIEL-gcc" --version | head -n1
+}
+
+schritt stage0-$ZIEL-header header
+schritt stage0-$ZIEL-binutils binutils
+schritt stage0-$ZIEL-gcc-quellen gcc_quellen
+schritt stage0-$ZIEL-gcc1 gcc1
+schritt stage0-$ZIEL-libc "libc_$VARIANTE"
+schritt stage0-$ZIEL-gcc2 gcc2
+NEU=1 schritt stage0-$ZIEL-pruefen pruefen
+# Herkunft festhalten
+{
+	echo "ziel=$ZIEL"
+	echo "datum=$(date -u +%FT%TZ)"
+	for n in linux binutils gcc gmp mpfr mpc "$VARIANTE"; do echo "$n=$(version "$n")"; done
+} >"$TC/$ZIEL/usrside-tc.info"
+meldung "stage0 fertig: $TC/bin/$ZIEL-gcc"

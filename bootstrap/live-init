@@ -1,0 +1,111 @@
+#!/bin/busybox sh
+# /init des Live-Initramfs (bootstrap/abbild --squashfs). Läuft mit BusyBox (musl) und sucht das Rootfs
+# usrside/rootfs.sfs:
+#   1. direkt auf einem Gerät (gebranntes/als Platte eingebundenes ISO, Ventoy-dm-Abbildung /dev/dm-*),
+#   2. in einer ISO-Datei auf einer beliebigen Partition (exFAT/vfat/ext4/btrfs/iso9660 …, Ventoy-Stick),
+#      zuerst usrside.iso=PFAD, sonst *.iso bis Tiefe 3.
+# Dann squashfs (ro) + tmpfs (rw) als overlayfs → switch_root auf init= (Standard /usr/bin/init).
+# Kernel-Parameter: usrside.iso=/pfad/datei.iso  usrside.warte=SEKUNDEN (Standard 30)  usrside.debug (Shell bei Fehler)
+# shellcheck shell=sh
+/bin/busybox mkdir -p /proc /sys /dev /usr/bin /usr/sbin /sbin
+/bin/busybox --install -s
+export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+SFS=usrside/rootfs.sfs
+LIVE=/run/usrside
+mkdir -p /run "$LIVE/medium" "$LIVE/iso" "$LIVE/ro" "$LIVE/rw" /neu
+
+say() { echo "usrside-live: $*" >/dev/console 2>&1 || echo "usrside-live: $*"; }
+nothalt() {
+	say "FEHLER: $*"
+	if [ -n "$DEBUG" ]; then exec sh; fi
+	say "Shell mit usrside.debug; Neustart in 30 s"
+	sleep 30
+	reboot -f
+}
+
+INIT=/usr/bin/init ISO="" WARTE=30 DEBUG=""
+# shellcheck disable=SC2013
+for a in $(cat /proc/cmdline); do
+	case $a in
+	init=*) INIT=${a#init=} ;;
+	usrside.iso=*) ISO=${a#usrside.iso=} ;;
+	usrside.warte=*) WARTE=${a#usrside.warte=} ;;
+	usrside.debug) DEBUG=1 ;;
+	esac
+done
+
+# hängt GERÄT unter $LIVE/medium ein (Dateisystem erkennt mount selbst)
+medium() {
+	umount "$LIVE/medium" 2>/dev/null
+	mount -o ro "$1" "$LIVE/medium" 2>/dev/null
+}
+# prüft ISO-Datei: loop + mount unter $LIVE/iso, Erfolg wenn usrside/rootfs.sfs darin liegt
+iso_pruefen() {
+	umount "$LIVE/iso" 2>/dev/null
+	mount -o ro,loop "$1" "$LIVE/iso" 2>/dev/null || return 1
+	[ -f "$LIVE/iso/$SFS" ] && return 0
+	umount "$LIVE/iso"
+	return 1
+}
+
+geraete() {
+	# zuerst Ventoy-dm und optische Laufwerke, dann alle Platten/Partitionen aus /proc/partitions
+	for g in /dev/mapper/ventoy /dev/dm-* /dev/sr*; do [ -b "$g" ] && echo "$g"; done
+	awk 'NR > 2 && $4 !~ /^(loop|ram|zram)/ {print "/dev/" $4}' /proc/partitions
+}
+
+suchen() {
+	for g in $(geraete); do
+		medium "$g" || continue
+		if [ -f "$LIVE/medium/$SFS" ]; then
+			QUELLE="$LIVE/medium/$SFS"
+			say "Rootfs auf $g"
+			return 0
+		fi
+		if [ -n "$ISO" ] && [ -f "$LIVE/medium/${ISO#/}" ] && iso_pruefen "$LIVE/medium/${ISO#/}"; then
+			QUELLE="$LIVE/iso/$SFS"
+			say "Rootfs in $g:$ISO"
+			return 0
+		fi
+		find "$LIVE/medium" -maxdepth 3 -iname '*.iso' -type f 2>/dev/null >/run/isos
+		while IFS= read -r i; do
+			if iso_pruefen "$i"; then
+				QUELLE="$LIVE/iso/$SFS"
+				say "Rootfs in $g:${i#"$LIVE"/medium}"
+				return 0
+			fi
+		done </run/isos
+		umount "$LIVE/medium"
+	done
+	return 1
+}
+
+QUELLE=""
+n=0
+until suchen; do
+	n=$((n + 1))
+	[ "$n" -ge "$WARTE" ] && nothalt "kein $SFS gefunden (Geräte: $(geraete | tr '\n' ' '))"
+	sleep 1
+done
+
+mount -t squashfs -o ro,loop "$QUELLE" "$LIVE/ro" || nothalt "squashfs $QUELLE lässt sich nicht einhängen"
+mount -t tmpfs -o mode=0755 tmpfs "$LIVE/rw"
+mkdir -p "$LIVE/rw/oben" "$LIVE/rw/arbeit"
+mount -t overlay overlay -o "lowerdir=$LIVE/ro,upperdir=$LIVE/rw/oben,workdir=$LIVE/rw/arbeit" /neu ||
+	nothalt "overlayfs fehlgeschlagen"
+[ -x "/neu$INIT" ] || [ -L "/neu$INIT" ] || nothalt "init $INIT fehlt im Rootfs"
+
+# Medium, ISO und Schichten bleiben unter /run/usrside sichtbar (Installer liest das Medium)
+mkdir -p /neu/run/usrside
+mount -t tmpfs -o mode=0755 tmpfs /neu/run
+mkdir -p /neu/run/usrside
+for d in medium iso ro rw; do
+	mkdir -p "/neu/run/usrside/$d"
+	mountpoint -q "$LIVE/$d" && mount --move "$LIVE/$d" "/neu/run/usrside/$d"
+done
+mount --move /dev /neu/dev
+umount /sys /proc
+exec switch_root /neu "$INIT"

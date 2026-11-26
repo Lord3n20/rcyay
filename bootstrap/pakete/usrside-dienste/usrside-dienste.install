@@ -1,0 +1,21 @@
+# s6-linux-init: Startordner aus dem Skelett erzeugen, Dienste ins run-image legen
+_s6() {
+	command -v s6-linux-init-maker >/dev/null || return 0
+	rm -rf /etc/s6-linux-init/current /etc/s6-linux-init/current.neu
+	s6-linux-init-maker -1 -f /etc/s6-linux-init/skel -c /etc/s6-linux-init/current \
+		/etc/s6-linux-init/current.neu || return 1
+	mv /etc/s6-linux-init/current.neu /etc/s6-linux-init/current
+	for d in /etc/sv/*/; do
+		n=${d%/}; n=${n##*/}
+		mkdir -p "/etc/s6-linux-init/current/run-image/service/$n"
+		cp "$d/run" "/etc/s6-linux-init/current/run-image/service/$n/run"
+		touch "/etc/s6-linux-init/current/run-image/service/$n/down"
+	done
+}
+post_install() {
+	_s6
+	# rcyay-dienste (M2): eingeschaltete Dienste für das aktive Init neu eintragen (idempotent)
+	command -v rcyay >/dev/null && rcyay --services apply
+	return 0
+}
+post_upgrade() { post_install; }

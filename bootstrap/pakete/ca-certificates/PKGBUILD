@@ -1,0 +1,18 @@
+# Mozilla-CA-Sammlung im Format von curl (ersetzt ca-certificates{,-mozilla,-utils})
+pkgname=ca-certificates
+pkgver=20261105
+pkgrel=1
+pkgdesc='Mozilla CA certificates (curl cacert bundle)'
+arch=(any)
+url='https://curl.se/docs/caextract.html'
+license=(MPL-2.0)
+provides=(ca-certificates-mozilla ca-certificates-utils)
+source=("https://curl.se/ca/cacert-2026-11-05.pem")
+sha256sums=('427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285')
+
+package() {
+	install -Dm644 cacert-2026-11-05.pem "$pkgdir/etc/ssl/certs/ca-certificates.crt"
+	ln -s certs/ca-certificates.crt "$pkgdir/etc/ssl/cert.pem"
+	install -dm755 "$pkgdir/etc/ca-certificates/extracted"
+	ln -s ../../ssl/certs/ca-certificates.crt "$pkgdir/etc/ca-certificates/extracted/tls-ca-bundle.pem"
+}

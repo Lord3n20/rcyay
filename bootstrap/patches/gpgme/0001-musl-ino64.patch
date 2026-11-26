@@ -1,0 +1,14 @@
+musl kennt ino64_t/off64_t nicht (nur mit _LARGEFILE64_SOURCE); getdents64 nutzt feste 64-Bit-Typen.
+--- a/src/posix-io.c	2026-11-26 11:03:20.585241736 +0100
++++ b/src/posix-io.c	2026-11-26 11:03:20.587241734 +0100
+@@ -74,8 +74,8 @@
+  * define it ourselves.  */
+ struct linux_dirent64
+ {
+-  ino64_t d_ino;
+-  off64_t d_off;
++  uint64_t d_ino;
++  int64_t d_off;
+   unsigned short d_reclen;
+   unsigned char d_type;
+   char d_name[];

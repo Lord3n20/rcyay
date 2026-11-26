@@ -1,0 +1,44 @@
+# UsrsideOS: Startskripte und Dienste (sshd, dhcpcd, getty) für BusyBox init, runit und s6.
+# Init per Kernel-Befehlszeile: init=/usr/bin/init (BusyBox), init=/usr/bin/runit-init,
+# init=/etc/s6-linux-init/current/bin/init. poweroff/reboot/halt richten sich nach PID 1.
+pkgname=usrside-dienste
+pkgver=2026.11.26
+pkgrel=4
+pkgdesc='UsrsideOS init scripts and services for BusyBox init, runit and s6'
+arch=(any)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-only)
+depends=(busybox runit s6-linux-init openssh dhcpcd)
+backup=(etc/inittab etc/mdev.conf)
+install=usrside-dienste.install
+
+package() {
+	# dateien/ liegt neben dem PKGBUILD (makepkg nimmt keine Ordner als source)
+	cd "$startdir/dateien"
+	install -Dm755 rc.start "$pkgdir/usr/lib/usrside/rc.start"
+	install -Dm755 rc.stop "$pkgdir/usr/lib/usrside/rc.stop"
+	install -dm755 "$pkgdir/etc/usrside/start.d" "$pkgdir/etc/modules-load.d"
+	install -Dm755 ausschalten "$pkgdir/usr/bin/poweroff"
+	ln -s poweroff "$pkgdir/usr/bin/reboot"
+	ln -s poweroff "$pkgdir/usr/bin/halt"
+	install -Dm644 inittab "$pkgdir/etc/inittab"
+	install -Dm644 mdev.conf "$pkgdir/etc/mdev.conf"
+	local s
+	for s in sshd dhcpcd getty-ttyS0; do
+		install -Dm755 "sv-$s" "$pkgdir/etc/sv/$s/run"
+	done
+	install -Dm755 runit-1 "$pkgdir/etc/runit/1"
+	install -Dm755 runit-2 "$pkgdir/etc/runit/2"
+	install -Dm755 runit-3 "$pkgdir/etc/runit/3"
+	install -dm755 "$pkgdir/etc/runit/runsvdir/default"
+	for s in sshd dhcpcd getty-ttyS0; do
+		ln -s "/etc/sv/$s" "$pkgdir/etc/runit/runsvdir/default/$s"
+	done
+	ln -s default "$pkgdir/etc/runit/runsvdir/current"
+	install -dm755 "$pkgdir/var"
+	ln -s /etc/runit/runsvdir/current "$pkgdir/var/service"
+	install -Dm755 s6-rc.init "$pkgdir/etc/s6-linux-init/skel/rc.init"
+	install -Dm755 s6-rc.shutdown "$pkgdir/etc/s6-linux-init/skel/rc.shutdown"
+	install -Dm755 s6-rc.shutdown.final "$pkgdir/etc/s6-linux-init/skel/rc.shutdown.final"
+	install -Dm755 s6-runlevel "$pkgdir/etc/s6-linux-init/skel/runlevel"
+}
