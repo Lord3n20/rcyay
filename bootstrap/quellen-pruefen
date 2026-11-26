@@ -1,0 +1,35 @@
+#!/bin/bash
+# Pflegewerkzeug (nicht Teil des Baus): lädt Quellen aus bootstrap/quellen herunter und trägt fehlende
+# Prüfsummen ("-") ein. Mit --alle werden alle neu berechnet und Abweichungen gemeldet.
+#   bootstrap/quellen-pruefen [--alle] [NAME ...]
+set -euo pipefail
+hier=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib.sh
+. "$hier/lib.sh"
+alle=0
+[[ ${1:-} == --alle ]] && { alle=1; shift; }
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+fehler=0
+while IFS= read -r zeile; do
+	case $zeile in '' | \#*) printf '%s\n' "$zeile" >>"$tmp"; continue ;; esac
+	read -r name ver sum url <<<"$zeile"
+	if (($#)) && ! printf '%s\n' "$@" | grep -qxF "$name"; then
+		printf '%-12s %-10s %s %s\n' "$name" "$ver" "$sum" "$url" >>"$tmp"; continue
+	fi
+	if [[ $sum == - || $alle == 1 ]]; then
+		datei=$QUELLEN/${url##*/}
+		[[ -s $datei ]] || (lade "$url" "$datei") || {
+			warnung "$name: Download fehlgeschlagen"; fehler=1
+			printf '%-12s %-10s %s %s\n' "$name" "$ver" "$sum" "$url" >>"$tmp"; continue
+		}
+		neu=$(sha256sum "$datei" | cut -d' ' -f1)
+		if [[ $sum != - && $sum != "$neu" ]]; then
+			warnung "$name: Prüfsumme weicht ab ($sum ≠ $neu)"; fehler=1; neu=$sum
+		fi
+		sum=$neu
+	fi
+	printf '%-12s %-10s %s %s\n' "$name" "$ver" "$sum" "$url" >>"$tmp"
+done <"$QUELLLISTE"
+cat "$tmp" >"$QUELLLISTE"
+exit "$fehler"
