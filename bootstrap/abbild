@@ -157,6 +157,12 @@ installieren() {
 	EOF
 	printf 'usrside-%s\n' "$VARIANTE" >"$MNT/etc/hostname"
 	sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$MNT/etc/ssh/sshd_config"
+	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=)
+	if grep -q '^Init *=' "$MNT/etc/rcyay.conf" 2>/dev/null; then
+		sed -i "s/^Init *=.*/Init = ${ABBILD_INIT:-runit}/" "$MNT/etc/rcyay.conf"
+	else
+		printf 'Init = %s\n' "${ABBILD_INIT:-runit}" >>"$MNT/etc/rcyay.conf"
+	fi
 	sync
 }
 

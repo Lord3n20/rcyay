@@ -14,6 +14,8 @@ _s6() {
 }
 post_install() {
 	_s6
+	# rcyay-dienste (M2): eingeschaltete Dienste für das aktive Init neu eintragen (idempotent)
+	command -v rcyay >/dev/null && rcyay --services apply
 	return 0
 }
 post_upgrade() { post_install; }
