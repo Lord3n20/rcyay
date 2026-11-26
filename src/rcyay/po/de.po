@@ -841,3 +841,8 @@ msgstr "%s: neue Version nicht bestimmbar: %s\n"
 #, c-format
 msgid "build failed - dependencies installed for it remain (remove with rcyay -Yc):\n"
 msgstr "Bau gescheitert – dafür installierte Abhängigkeiten bleiben (entfernen mit rcyay -Yc):\n"
+
+#: lib/libaur/resolve.c
+#, c-format
+msgid "%s: only for glibc (arch=%s), not available for %s"
+msgstr "%s: nur für glibc (arch=%s), nicht verfügbar für %s"

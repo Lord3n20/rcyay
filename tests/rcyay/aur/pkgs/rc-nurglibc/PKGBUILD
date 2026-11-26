@@ -1,0 +1,7 @@
+pkgname=rc-nurglibc
+pkgver=1.0
+pkgrel=1
+arch=(x86_64)
+license=(MIT)
+pkgdesc="rcyay Testpaket nur fuer glibc"
+package() { :; }

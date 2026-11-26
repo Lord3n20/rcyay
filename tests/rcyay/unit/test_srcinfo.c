@@ -87,9 +87,32 @@ int main(void)
 	CHECK_STR(aur_srcinfo_pkgdesc(si, foo), "Basis-Beschreibung");
 	CHECK_STR(aur_srcinfo_pkgdesc(si, libs), "Bibliotheken");
 	CHECK(aur_srcinfo_supports_arch(si, foo, "x86_64"));
-	CHECK(!aur_srcinfo_supports_arch(si, foo, "x86_64-musl"));
-	CHECK(aur_srcinfo_supports_arch(si, libs, "x86_64-musl"));
+	CHECK(!aur_srcinfo_supports_arch(si, foo, "x86_64_musl"));
+	CHECK(aur_srcinfo_supports_arch(si, libs, "x86_64_musl"));
 	aur_srcinfo_free(si);
+
+	/* musl-Variante: Architektur x86_64_musl (Unterstrich, damit makepkg
+	 * depends_$CARCH als Variablennamen bilden kann) */
+	si = aur_srcinfo_parse("pkgbase = m\npkgver = 1\npkgrel = 1\narch = x86_64\narch = x86_64_musl\n"
+			"depends = zlib\ndepends_x86_64 = glibc-ding\ndepends_x86_64_musl = musl-fts\n"
+			"makedepends_x86_64_musl = musl-bau\npkgname = m\n\npkgname = m-nurglibc\narch = x86_64\n", &err);
+	CHECK(si != NULL);
+	if(si) {
+		aur_si_pkg_t *m = aur_srcinfo_find_pkg(si, "m"), *g = aur_srcinfo_find_pkg(si, "m-nurglibc");
+		v = aur_srcinfo_values(si, m, AUR_FIELD_DEPENDS, "x86_64_musl");
+		CHECK(alpm_list_count(v) == 2 && has(v, "zlib") && has(v, "musl-fts"));
+		alpm_list_free(v);
+		v = aur_srcinfo_values(si, m, AUR_FIELD_DEPENDS, "x86_64");
+		CHECK(alpm_list_count(v) == 2 && has(v, "zlib") && has(v, "glibc-ding"));
+		alpm_list_free(v);
+		v = aur_srcinfo_values(si, m, AUR_FIELD_MAKEDEPENDS, "x86_64_musl");
+		CHECK(alpm_list_count(v) == 1 && has(v, "musl-bau"));
+		alpm_list_free(v);
+		CHECK(aur_srcinfo_supports_arch(si, m, "x86_64_musl"));
+		CHECK(!aur_srcinfo_supports_arch(si, g, "x86_64_musl"));
+		CHECK(aur_srcinfo_supports_arch(si, g, "x86_64"));
+		aur_srcinfo_free(si);
+	}
 
 	/* epoch 0 / fehlend */
 	si = aur_srcinfo_parse("pkgbase = b\npkgver = 1\npkgrel = 1\nepoch = 0\npkgname = b\n", &err);

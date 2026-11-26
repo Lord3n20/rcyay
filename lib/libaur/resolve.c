@@ -164,8 +164,21 @@ static aur_base_t *add_pkg(state_t *st, aur_pkg_t *pkg, const char *pkgname, int
 	}
 	if(!aur_srcinfo_supports_arch(b->srcinfo, aur_srcinfo_find_pkg(b->srcinfo, pkgname),
 				st->r->arch)) {
-		add_error(st->plan, _("%s: not available for architecture %s"), pkgname,
-				st->r->arch ? st->r->arch : "?");
+		const char *a = st->r->arch;
+		size_t al = a ? strlen(a) : 0;
+		char glibc[64];
+		/* musl-Variante (x86_64_musl): Paket nur für die glibc-Architektur da? */
+		if(al > 5 && al < sizeof(glibc) && strcmp(a + al - 5, "_musl") == 0) {
+			memcpy(glibc, a, al - 5);
+			glibc[al - 5] = '\0';
+		} else {
+			glibc[0] = '\0';
+		}
+		if(glibc[0] && aur_srcinfo_supports_arch(b->srcinfo, aur_srcinfo_find_pkg(b->srcinfo, pkgname), glibc)) {
+			add_error(st->plan, _("%s: only for glibc (arch=%s), not available for %s"), pkgname, glibc, a);
+		} else {
+			add_error(st->plan, _("%s: not available for architecture %s"), pkgname, a ? a : "?");
+		}
 	}
 	if(explicit) {
 		b->explicit = aur_list_add_unique(b->explicit, pkgname);

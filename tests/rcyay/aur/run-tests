@@ -182,6 +182,15 @@ R -G --repo rc-hello; r=$?; check "-G --repo für AUR-Paket -> Fehler" [ $r != 0
 { echo 1; yes y; } | R rc-hello; r=$?
 check "rcyay WORT: Auswahl 1 installiert" bash -c "[ $r = 0 ] && grep -q 'aur/rc-hello' '$W/out'"
 
+# ---------- musl-Architektur x86_64_musl ----------
+sed -e '/^Architecture/d' -e 's/^\[options\]$/[options]\nArchitecture = x86_64_musl/' "$W/pacman.conf" > "$W/pacman-musl.conf"
+printf 'n\n' | "$RCYAY" --config "$W/pacman-musl.conf" --rcyayconf "$W/rcyay.conf" -S rc-musl >"$W/out" 2>&1
+check "musl: Plan ohne depends_x86_64 (bis zur Bau-Frage)" bash -c "grep -q 'Proceed with building' '$W/out' && ! grep -q rc-gibt-es-nicht-glibc '$W/out'"
+"$RCYAY" --config "$W/pacman-musl.conf" --rcyayconf "$W/rcyay.conf" -S --noconfirm rc-nurglibc >"$W/out" 2>&1; r=$?
+check "musl: arch=(x86_64) -> klare Meldung nur glibc" bash -c "[ $r != 0 ] && grep -q 'only for glibc (arch=x86_64), not available for x86_64_musl' '$W/out'"
+R -S --noconfirm rc-musl; r=$?
+check "glibc: depends_x86_64 gilt (fehlende Abh. gemeldet)" bash -c "[ $r != 0 ] && grep -q rc-gibt-es-nicht-glibc '$W/out'"
+
 # ---------- PGP-Schlüssel (validpgpkeys) ----------
 BAUHOME=$(getent passwd rcyay-bau | cut -d: -f6)
 gpgbau() { runuser -u rcyay-bau -- env HOME="$BAUHOME" gpg --batch "$@"; }

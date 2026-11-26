@@ -1,0 +1,9 @@
+pkgname=rc-musl
+pkgver=1.0
+pkgrel=1
+arch=(x86_64 x86_64_musl)
+license=(MIT)
+pkgdesc="rcyay Testpaket fuer glibc und musl"
+depends_x86_64=(rc-gibt-es-nicht-glibc)
+depends_x86_64_musl=(rc-repodep)
+package() { :; }
