@@ -1,0 +1,14 @@
+# rcyay-dienste: systemd-Units neuer/aktualisierter Pakete für das aktive Init
+# (Init = in /etc/rcyay.conf: busybox, runit, s6; bei systemd passiert nichts)
+[Trigger]
+Type = Path
+Operation = Install
+Operation = Upgrade
+Target = usr/lib/systemd/system/*.service
+Target = usr/lib/systemd/user/*.service
+
+[Action]
+Description = Providing services for the active init (rcyay-dienste)...
+When = PostTransaction
+Exec = /usr/bin/rcyay --services update
+NeedsTargets

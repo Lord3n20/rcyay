@@ -1,0 +1,116 @@
+#!/bin/bash
+# Dateisystem-Tests für rcyay-dienste (rcyay-e1b, 26.11.2026) mit --root in einem
+# Wegwerf-Ordner – braucht kein laufendes Init, keine root-Rechte.
+#   run-tests RCYAY
+# Ausgabe im TAP-Format, Exit-Code 0 = alles grün.
+set -u
+RCYAY=$(readlink -f "${1:?Pfad zu rcyay}")
+HIER=$(cd "$(dirname "$0")" && pwd)
+export LANG=C LC_ALL=C
+W=$(mktemp -d /tmp/rcyay-dienste.XXXXXX)
+N=0 FAIL=0
+ok()   { N=$((N+1)); echo "ok $N - $1"; }
+nok()  { N=$((N+1)); FAIL=$((FAIL+1)); echo "not ok $N - $1"; [ -f "$W/out" ] && sed 's/^/#   /' "$W/out" | tail -20; }
+check() { local d=$1; shift; if "$@"; then ok "$d"; else nok "$d"; fi; }
+has()   { grep -q -- "$1" "$W/out"; }
+
+neu() {   # frisches Zielsystem wie UsrsideOS (usrside-dienste von e2 vereinfacht)
+  rm -rf "$W/r"; R=$W/r
+  mkdir -p "$R/usr/lib/systemd/system" "$R/usr/lib/systemd/user" "$R/etc/systemd/system/multi-user.target.wants" \
+           "$R/etc/runit/runsvdir/default" "$R/etc/s6-linux-init/current/run-image/service" \
+           "$R/etc/usrside/start.d" "$R/usr/share/rcyay/overlay/dienste"
+  for u in sshd sshd@ sshdgenkeys dhcpcd dhcpcd@ seatd NetworkManager NetworkManager-dispatcher NetworkManager-wait-online; do
+    cp "$HIER/units/$u.service" "$R/usr/lib/systemd/system/"
+  done
+  cp "$HIER/units/pipewire.service" "$R/usr/lib/systemd/user/"
+  printf '[Service]\nType=forking\nExecStart=/usr/bin/kaputt\n[Install]\nWantedBy=multi-user.target\n' \
+    > "$R/usr/lib/systemd/system/kaputt.service"
+  printf '::sysinit:/usr/lib/usrside/rc.start\n::respawn:/etc/sv/sshd/run\ntty1::respawn:/usr/bin/getty 38400 tty1\n' > "$R/etc/inittab"
+  printf '[options]\n#Init = systemd\nBuildUser = rcyay-bau\n' > "$R/etc/rcyay.conf"
+}
+X() { "$RCYAY" --root "$R" --rcyayconf "$R/etc/rcyay.conf" "$@" >"$W/out" 2>&1; }
+
+# ---------- runit ----------
+neu
+ln -s /usr/lib/systemd/system/sshd.service "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
+X --init runit; r=$?
+check "--init runit: Exit 1 wegen unübersetzbarer kaputt.service" [ $r = 1 ]
+check "Init in rcyay.conf gesetzt (auskommentierte Zeile ersetzt)" grep -qx "Init = runit" "$R/etc/rcyay.conf"
+check "rcyay.conf: übrige Zeilen bleiben" grep -qx "BuildUser = rcyay-bau" "$R/etc/rcyay.conf"
+check "sshd übersetzt (run, ausführbar)" test -x "$R/etc/rcyay/dienste/sshd/run"
+check "sshd run: sshd -D im Vordergrund" grep -q "^exec /usr/bin/sshd -D$" "$R/etc/rcyay/dienste/sshd/run"
+check "systemd-Zustand übernommen: sshd eingeschaltet" grep -qx sshd "$R/etc/rcyay/dienste.an"
+check "runit: Link default/sshd -> /etc/rcyay/dienste/sshd" [ "$(readlink "$R/etc/runit/runsvdir/default/sshd")" = /etc/rcyay/dienste/sshd ]
+check "dhcpcd übersetzt, aber nicht eingeschaltet" bash -c "[ -x '$R/etc/rcyay/dienste/dhcpcd/run' ] && [ ! -e '$R/etc/runit/runsvdir/default/dhcpcd' ]"
+check "sshdgenkeys: oneshot (start statt run)" bash -c "[ -x '$R/etc/rcyay/dienste/sshdgenkeys/start' ] && [ ! -e '$R/etc/rcyay/dienste/sshdgenkeys/run' ]"
+check "Vorlagen sshd@/dhcpcd@ nicht übersetzt" bash -c "[ ! -e '$R/etc/rcyay/dienste/sshd@' ] && [ ! -e '$R/etc/rcyay/dienste/dhcpcd@' ]"
+check "Hinweis Vorlage" has "sshd@: template unit"
+check "statische Unit (dispatcher) nicht übersetzt" test ! -e "$R/etc/rcyay/dienste/NetworkManager-dispatcher"
+check "Warnung für unübersetzbare Unit mit overlay-Hinweis" has "kaputt: cannot translate: Type=forking without PIDFile= - add an own service in overlay/dienste/kaputt/"
+check "pipewire (Nutzer-Unit) nicht unter /etc/rcyay/dienste" test ! -e "$R/etc/rcyay/dienste/pipewire"
+echo usr/lib/systemd/user/pipewire.service | X --services update
+check "Hook mit Nutzer-Unit pipewire: Hinweis" bash -c "grep -q 'pipewire: user unit - start it from your session' '$W/out' && [ ! -e '$R/etc/rcyay/dienste/pipewire' ]"
+
+X --enable dhcpcd seatd sshdgenkeys; r=$?
+check "--enable dhcpcd seatd sshdgenkeys" [ $r = 0 ]
+check "runit: dhcpcd und seatd verlinkt" bash -c "[ -L '$R/etc/runit/runsvdir/default/dhcpcd' ] && [ -L '$R/etc/runit/runsvdir/default/seatd' ]"
+check "oneshot über start.d (rc.start)" grep -q "^/etc/rcyay/dienste/sshdgenkeys/start$" "$R/etc/usrside/start.d/rcyay-sshdgenkeys.sh"
+X --services list
+check "--services list zeigt Zustand" bash -c "grep -q '^dhcpcd .* yes .*translated' '$W/out' && grep -q '^sshdgenkeys .*oneshot' '$W/out' && grep -q '^kaputt .*not translated' '$W/out'"
+X --disable seatd
+check "--disable seatd: Link weg, Liste ohne seatd" bash -c "[ ! -e '$R/etc/runit/runsvdir/default/seatd' ] && ! grep -qx seatd '$R/etc/rcyay/dienste.an'"
+
+# eigener Dienst aus overlay/dienste und Paket-Dienst in /etc/sv
+mkdir -p "$R/usr/share/rcyay/overlay/dienste/kaputt"
+printf '#!/bin/sh\nexec /usr/bin/kaputt -f\n' > "$R/usr/share/rcyay/overlay/dienste/kaputt/run"; chmod 755 "$R/usr/share/rcyay/overlay/dienste/kaputt/run"
+echo usr/lib/systemd/system/kaputt.service | X --services update; r=$?
+check "Hook-Aufruf über stdin (NeedsTargets): overlay statt Übersetzung" bash -c "[ $r = 0 ] && grep -q 'kaputt -f' '$R/etc/rcyay/dienste/kaputt/run'"
+mkdir -p "$R/etc/sv/dhcpcd"; printf '#!/bin/sh\nexec dhcpcd -B -q\n' > "$R/etc/sv/dhcpcd/run"; chmod 755 "$R/etc/sv/dhcpcd/run"
+X --services update dhcpcd
+check "Paket liefert /etc/sv/dhcpcd: Erzeugtes weg, Link zeigt auf /etc/sv" bash -c "[ ! -e '$R/etc/rcyay/dienste/dhcpcd' ] && [ \"\$(readlink '$R/etc/runit/runsvdir/default/dhcpcd')\" = /etc/sv/dhcpcd ]"
+
+# Paket entfernt (PreTransaction-Hook)
+echo usr/lib/systemd/system/sshd.service | X --services remove
+check "--services remove: Dienst aus, Erzeugtes und Eintrag weg" bash -c "[ ! -e '$R/etc/runit/runsvdir/default/sshd' ] && [ ! -e '$R/etc/rcyay/dienste/sshd' ] && ! grep -qx sshd '$R/etc/rcyay/dienste.an'"
+X --enable sshd
+check "--enable übersetzt bei Bedarf neu" bash -c "[ -x '$R/etc/rcyay/dienste/sshd/run' ] && [ -L '$R/etc/runit/runsvdir/default/sshd' ]"
+
+# ---------- Umschalten auf s6 ----------
+X --init s6
+check "--init s6: Init in rcyay.conf" grep -qx "Init = s6" "$R/etc/rcyay.conf"
+check "s6: runit-Links entfernt" bash -c "[ -z \"\$(ls '$R/etc/runit/runsvdir/default')\" ]"
+S6=$R/etc/s6-linux-init/current/run-image/service
+check "s6: sshd im run-image (run + down)" bash -c "[ -x '$S6/sshd/run' ] && [ -e '$S6/sshd/down' ]"
+check "s6: dhcpcd aus /etc/sv kopiert" grep -q "dhcpcd -B -q" "$S6/dhcpcd/run"
+check "s6: ausgeschaltete Dienste fehlen" test ! -e "$S6/seatd"
+check "s6: oneshot weiter über start.d" test -e "$R/etc/usrside/start.d/rcyay-sshdgenkeys.sh"
+X --enable NetworkManager
+check "s6: NetworkManager wartet auf dbus" grep -q "s6-svwait -u -t 10000 /run/service/dbus" "$S6/NetworkManager/run"
+X --services update NetworkManager
+check "Hinweis D-Bus" has "needs a running D-Bus"
+
+# ---------- Umschalten auf BusyBox init ----------
+X --init busybox
+check "busybox: s6-Dienste entfernt" bash -c "[ ! -e '$S6/sshd' ] && [ ! -e '$S6/NetworkManager' ]"
+check "busybox: erzeugter sshd im rcyay-Block der inittab" grep -q "^::respawn:/etc/rcyay/dienste/sshd/run # sshd$" "$R/etc/inittab"
+check "busybox: NetworkManager in inittab" grep -q "^::respawn:/etc/rcyay/dienste/NetworkManager/run # NetworkManager$" "$R/etc/inittab"
+check "busybox: Paket-dhcpcd über /etc/sv" grep -q "^::respawn:/etc/sv/dhcpcd/run # dhcpcd$" "$R/etc/inittab"
+check "busybox: fremde Zeilen der inittab bleiben" bash -c "grep -q '^::sysinit:/usr/lib/usrside/rc.start$' '$R/etc/inittab' && grep -q '^tty1::respawn' '$R/etc/inittab'"
+X --disable NetworkManager
+check "busybox: --disable entfernt Zeile" bash -c "! grep -q NetworkManager '$R/etc/inittab'"
+cp "$R/etc/inittab" "$W/inittab.vorher"; X --services apply
+check "--services apply ist idempotent" cmp -s "$W/inittab.vorher" "$R/etc/inittab"
+X --init busybox
+check "zweimal --init busybox: genau ein Block" [ "$(grep -c 'rcyay-dienste: begin' "$R/etc/inittab")" = 1 ]
+
+# ---------- systemd: nichts tun ----------
+X --init systemd
+check "--init systemd: inittab-Block entfernt" bash -c "! grep -q rcyay-dienste '$R/etc/inittab'"
+echo usr/lib/systemd/system/seatd.service | X --services update; r=$?
+check "Init systemd: Hook tut nichts" bash -c "[ $r = 0 ] && grep -q 'used directly' '$W/out'"
+X --init openrc; r=$?
+check "unbekanntes Init -> Fehler" [ $r != 0 ]
+
+echo "1..$N"
+[ $FAIL = 0 ] && { echo "# alle $N Tests grün"; rm -rf "$W"; exit 0; }
+echo "# $FAIL von $N Tests fehlgeschlagen (Arbeitsordner $W bleibt)"; exit 1

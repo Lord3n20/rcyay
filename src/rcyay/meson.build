@@ -6,4 +6,6 @@ rcyay_sources = files('''
   aur.c
   build.c
   extra.c
+  unit.h unit.c
+  dienste.c
 '''.split())

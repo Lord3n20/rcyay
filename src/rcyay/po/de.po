@@ -873,3 +873,159 @@ msgstr "Quelle %s ist ein fertiges Binärpaket (mit --force-musl trotzdem versuc
 #: src/rcyay/extra.c
 msgid "    --force-musl   build -bin/binary-source packages on musl anyway (not nur-glibc.txt)\n"
 msgstr "    --force-musl   -bin/Binär-Quellen auf musl trotzdem bauen (nicht nur-glibc.txt)\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: no service for %s - not enabled in the init\n"
+msgstr "%s: kein Dienst für %s – im Init nicht eingeschaltet\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: %s is missing - oneshot service %s is not run at boot\n"
+msgstr "%s: %s fehlt – Einmal-Dienst %s läuft beim Start nicht\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: %s exists and is not a link - left alone\n"
+msgstr "%s: %s existiert und ist kein Link – bleibt unverändert\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: provided by a package in %s/%s\n"
+msgstr "%s: von einem Paket geliefert in %s/%s\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: own service from %s\n"
+msgstr "%s: eigener Dienst aus %s\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: translated for %s (%s)\n"
+msgstr "%s: übersetzt für %s (%s)\n"
+
+#: src/rcyay/dienste.c
+msgid "oneshot"
+msgstr "einmalig"
+
+#: src/rcyay/dienste.c
+msgid "supervised"
+msgstr "überwacht"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "invalid service name '%s'\n"
+msgstr "ungültiger Dienstname „%s“\n"
+
+#: src/rcyay/dienste.c
+msgid "this operation needs root privileges\n"
+msgstr "dieser Vorgang braucht Root-Rechte\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "Init is %s - systemd units are used directly\n"
+msgstr "Init ist %s – systemd-Units gelten direkt\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: no service to enable\n"
+msgstr "%s: kein Dienst zum Einschalten\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "Init is %s - use systemctl; recorded for other inits only\n"
+msgstr "Init ist %s – systemctl benutzen; nur für andere Inits vermerkt\n"
+
+#: src/rcyay/dienste.c
+msgid "SERVICE"
+msgstr "DIENST"
+
+#: src/rcyay/dienste.c
+msgid "ON"
+msgstr "AN"
+
+#: src/rcyay/dienste.c
+msgid "SOURCE"
+msgstr "HERKUNFT"
+
+#: src/rcyay/dienste.c
+msgid "package (/etc/sv)"
+msgstr "Paket (/etc/sv)"
+
+#: src/rcyay/dienste.c
+msgid "overlay"
+msgstr "Overlay"
+
+#: src/rcyay/dienste.c
+msgid "translated, oneshot"
+msgstr "übersetzt, einmalig"
+
+#: src/rcyay/dienste.c
+msgid "translated"
+msgstr "übersetzt"
+
+#: src/rcyay/dienste.c
+msgid "not translated"
+msgstr "nicht übersetzt"
+
+#: src/rcyay/dienste.c
+msgid "yes"
+msgstr "ja"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "invalid init '%s' (systemd, busybox, runit, s6)\n"
+msgstr "ungültiges Init „%s“ (systemd, busybox, runit, s6)\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "Init is now %s\n"
+msgstr "Init ist jetzt %s\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "rcyay.conf: invalid Init = %s (systemd, busybox, runit, s6)\n"
+msgstr "rcyay.conf: ungültiges Init = %s (systemd, busybox, runit, s6)\n"
+
+#: src/rcyay/dienste.c
+msgid "--init needs exactly one of: systemd, busybox, runit, s6\n"
+msgstr "--init braucht genau eins von: systemd, busybox, runit, s6\n"
+
+#: src/rcyay/dienste.c
+msgid "no service given\n"
+msgstr "kein Dienst angegeben\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "unknown --services command '%s' (update, remove, list, apply)\n"
+msgstr "unbekannter --services-Befehl „%s“ (update, remove, list, apply)\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid "%s: %s is missing (s6-linux-init not set up) - only enabled for this boot\n"
+msgstr "%s: %s fehlt (s6-linux-init nicht eingerichtet) – nur für diesen Start eingeschaltet\n"
+
+#: src/rcyay/dienste.c
+#, c-format
+msgid " -> %s: user unit - start it from your session (e.g. niri spawn-at-startup), not translated\n"
+msgstr " -> %s: Nutzer-Unit – in der Sitzung starten (z. B. niri spawn-at-startup), nicht übersetzt\n"
+
+#: src/rcyay/dienste.c
+msgid "\nservices (rcyay-dienste, for busybox/runit/s6):\n"
+msgstr "\nDienste (rcyay-dienste, für busybox/runit/s6):\n"
+
+#: src/rcyay/dienste.c
+msgid "    --services update|remove [UNIT...]  translate systemd units (hook; stdin if none)\n"
+msgstr "    --services update|remove [UNIT...]  systemd-Units übersetzen (Hook; ohne Angabe stdin)\n"
+
+#: src/rcyay/dienste.c
+msgid "    --services list|apply               show services / re-enable all in the init\n"
+msgstr "    --services list|apply               Dienste zeigen / alle im Init neu einschalten\n"
+
+#: src/rcyay/dienste.c
+msgid "    --enable / --disable NAME...        switch services on/off for every init\n"
+msgstr "    --enable / --disable NAME...        Dienste für jedes Init ein-/ausschalten\n"
+
+#: src/rcyay/dienste.c
+msgid "    --init systemd|busybox|runit|s6     switch init, regenerate all services\n"
+msgstr "    --init systemd|busybox|runit|s6     Init umschalten, alle Dienste neu erzeugen\n"

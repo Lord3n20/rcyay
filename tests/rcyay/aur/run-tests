@@ -167,6 +167,12 @@ check "--devel: unverändert -> übersprungen" bash -c "[ $r = 0 ] && grep -q 'i
 echo 2 > /tmp/rcyay-devver
 R -Sua --devel --noconfirm; check "--devel: neue pkgver -> aktualisiert" ver rc-dev-git 2-1
 
+# vorab eingegebene Antworten: makepkg darf sie nicht verschlucken (stdin = /dev/null)
+aufraeumen_one() { pacman -Rdd --noconfirm "$1" >/dev/null 2>&1; true; }
+aufraeumen_one rc-hello
+yes y | head -n 50 | R -S rc-hello; r=$?
+check "gepipte Antworten reichen bis zur Installation" bash -c "[ $r = 0 ] && pacman -Q rc-hello >/dev/null"
+
 # ---------- Prüfung vor dem Bau ----------
 printf 'y\nn\n' | R -S rc-install; r=$?
 check "Ablehnen nach PKGBUILD-Anzeige bricht ab" bash -c "[ $r != 0 ] && ! pacman -Q rc-install >/dev/null 2>&1"

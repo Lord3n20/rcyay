@@ -216,7 +216,18 @@ int rc_have_program(const char *name)
 /* Führt argv aus (PATH-Suche), optional in dir, als uid/gid (uid (uid_t)-1 =
  * unverändert), stdout optional in *out. Rückgabe: Exit-Code, 128+Signal
  * oder -1. */
-static int run_quiet;
+static int run_quiet, run_nostdin;
+
+/* wie rc_run, aber stdin = /dev/null (makepkg soll keine Antworten verschlucken,
+ * die für spätere Fragen von rcyay gedacht sind) */
+int rc_run_nostdin(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out)
+{
+	int r;
+	run_nostdin = 1;
+	r = rc_run(argv, dir, uid, gid, home, out);
+	run_nostdin = 0;
+	return r;
+}
 
 int rc_run_quiet(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out)
 {
@@ -258,6 +269,13 @@ int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, cons
 	if(pid == 0) {
 		signal(SIGINT, SIG_DFL);
 		signal(SIGQUIT, SIG_DFL);
+		if(run_nostdin) {
+			int nul = open("/dev/null", O_RDONLY);
+			if(nul >= 0) {
+				dup2(nul, STDIN_FILENO);
+				close(nul);
+			}
+		}
 		if(run_quiet) {
 			int nul = open("/dev/null", O_WRONLY);
 			if(nul >= 0) {

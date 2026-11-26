@@ -1,0 +1,11 @@
+# rcyay-dienste: Dienste entfernter Pakete ausschalten und Erzeugtes löschen
+[Trigger]
+Type = Path
+Operation = Remove
+Target = usr/lib/systemd/system/*.service
+
+[Action]
+Description = Removing services of removed packages (rcyay-dienste)...
+When = PreTransaction
+Exec = /usr/bin/rcyay --services remove
+NeedsTargets

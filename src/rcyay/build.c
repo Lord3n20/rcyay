@@ -386,7 +386,7 @@ static int makepkg(job_t *j, const char *a1, const char *a2, char **out)
 		argv[k++] = "--nocheck";
 	}
 	argv[k] = NULL;
-	return rc_run(argv, j->dir, build_uid, build_gid, build_home, out);
+	return rc_run_nostdin(argv, j->dir, build_uid, build_gid, build_home, out);
 }
 
 /* Paketname aus Dateiname NAME-VER-REL-ARCH.pkg.tar.* */

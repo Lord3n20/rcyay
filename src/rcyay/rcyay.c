@@ -83,6 +83,10 @@ int main(int argc, char *argv[])
 	textdomain(PACKAGE);
 #endif
 
+	/* stdin ungepuffert: Antworten, die für Kindprozesse (pacman -U/-S über sudo)
+	 * gedacht sind, dürfen nicht in rcyays stdio-Puffer verschwinden */
+	setvbuf(stdin, NULL, _IONBF, 0);
+
 	R.myname = argv[0];
 	R.self = self_path(argv[0]);
 	R.removemake = -1;
@@ -94,6 +98,14 @@ int main(int argc, char *argv[])
 	}
 	if(rc_parseargs(argc, argv) != 0) {
 		return 1;
+	}
+
+	/* rcyay-dienste (Init-neutral): --services, --enable/--disable, --init */
+	if(R.svcmd) {
+		if(rc_readconf() != 0) {
+			return 1;
+		}
+		return rc_dienste_main();
 	}
 
 	/* reine pacman-Operationen unverändert an pacman */

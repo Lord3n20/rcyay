@@ -1,0 +1,19 @@
+# UsrsideOS: rcyay-dienste – systemd-Units der Pakete in BusyBox init, runit oder s6 übersetzen
+# (Init = in /etc/rcyay.conf, umschalten mit „rcyay --init X“). Bauen aus dem rcyay-Baum:
+#   cd pkg/usrside-init && makepkg
+pkgname=usrside-init
+pkgver=2026.11.26
+pkgrel=1
+pkgdesc='rcyay-dienste: provide systemd units as BusyBox init, runit or s6 services'
+arch=(any)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-or-later)
+depends=(rcyay)
+source=(rcyay-dienste.hook rcyay-dienste-weg.hook)
+sha256sums=(SKIP SKIP)
+
+package() {
+	install -Dm644 rcyay-dienste.hook "$pkgdir/usr/share/libalpm/hooks/rcyay-dienste.hook"
+	install -Dm644 rcyay-dienste-weg.hook "$pkgdir/usr/share/libalpm/hooks/rcyay-dienste-weg.hook"
+	# eigene Dienste (overlay/dienste/NAME) installiert rcyay selbst nach /usr/share/rcyay/overlay/dienste
+}

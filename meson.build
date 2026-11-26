@@ -468,6 +468,9 @@ configure_file(
 install_emptydir(join_paths(SYSCONFDIR, 'makepkg.d/'))
 
 install_data('etc/rcyay.conf', install_dir : SYSCONFDIR)
+# Patch-Overlay (nur-glibc.txt, Paketordner, dienste/) → /usr/share/rcyay/overlay (Overlay = in rcyay.conf)
+install_subdir('overlay', install_dir : get_option('datadir') / 'rcyay',
+  exclude_files : ['README.md', 'dienste/README.md'])
 
 configure_file(
   input : 'etc/pacman.conf.in',

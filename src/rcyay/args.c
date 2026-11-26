@@ -133,6 +133,27 @@ static int parse_long(int argc, char *argv[], int i)
 	if(strcmp(name, "bottomup") == 0) { R.bottomup = 1; return 1; }
 	if(strcmp(name, "nocheck") == 0) { R.nocheck = 1; return 1; }
 	if(strcmp(name, "force-musl") == 0) { R.force_musl = 1; return 1; }
+	if(strcmp(name, "enable") == 0) { R.svcmd = "enable"; return 1; }
+	if(strcmp(name, "disable") == 0) { R.svcmd = "disable"; return 1; }
+	if(strcmp(name, "services") == 0 || strcmp(name, "dienste") == 0 || strcmp(name, "init") == 0) {
+		static char sub[32];
+		if(!val) {
+			if(i + 1 >= argc) {
+				rc_err(_("option --%s requires an argument\n"), name);
+				return -1;
+			}
+			val = argv[i + 1];
+			used = 2;
+		}
+		if(strcmp(name, "init") == 0) {
+			R.svcmd = "init";
+			R.targets = alpm_list_add(R.targets, strdup(val));
+		} else {
+			snprintf(sub, sizeof(sub), "%s", val);
+			R.svcmd = sub;
+		}
+		return used;
+	}
 	if(strcmp(name, "aururl") == 0 || strcmp(name, "builddir") == 0 ||
 			strcmp(name, "rcyayconf") == 0 || strcmp(name, "sortby") == 0) {
 		if(!val) {

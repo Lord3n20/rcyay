@@ -52,6 +52,7 @@ typedef struct {
 	int nodiff;
 	int nocheck;
 	int force_musl;           /* --force-musl */
+	const char *svcmd;        /* rcyay-dienste: update, remove, list, apply, enable, disable, init */
 	alpm_list_t *targets;     /* char* */
 	alpm_list_t *tokens;      /* char*: pacman-Optionen (ohne rcyay-eigene, ohne Ziele) */
 	alpm_list_t *global;      /* char*: Optionen für jeden pacman-Aufruf (--config …) */
@@ -108,6 +109,7 @@ void rc_alpm_release(void);
 int rc_alpm_reload(void);
 int rc_run(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out);
 int rc_run_quiet(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out);
+int rc_run_nostdin(const char *const argv[], const char *dir, uid_t uid, gid_t gid, const char *home, char **out);
 void rc_build_path(uid_t uid, gid_t gid, const char *home);
 int rc_pacman(alpm_list_t *args, int root);
 int rc_pacman_inproc(alpm_list_t *tokens, alpm_list_t *targets);
@@ -140,6 +142,9 @@ void rc_print_aur_search(alpm_list_t *pkgs, int quiet, int numbered, int start);
 /* build.c */
 int rc_op_sync(void);
 int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *devel);
+
+/* dienste.c */
+int rc_dienste_main(void);
 
 /* extra.c */
 int rc_op_clean(void);
