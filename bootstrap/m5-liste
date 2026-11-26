@@ -1,0 +1,23 @@
+# M5: musl-Quellbauten über stage2 hinaus (LISTE=m5-liste bootstrap/stage2), Format wie stage2-liste.
+# Reihenfolge aus bootstrap/m5-ordnung (Overlay-usrside_ohne berücksichtigt), Zeilen aus bootstrap/arch-eintrag.
+# Pakete, die auf musl nicht gehen: overlay/nur-glibc.txt.
+# Stufe 1: Wayland-Grundlage, seatd, foot
+default-cursors      arch:3-1                  f2af82481f4926b1a1541229172b4a05c3addd723ff11ff6d3840d608f74ca65
+expat                arch:2.10.0-1             18e85173596f5a5a5738fccdfb34ce58294ee16dc381434ce688e145a761e491
+gperf                arch:3.3-2                cbcc8f16bf302578f92c6020c8cbb70b56f476c8ab347dabbb95c6d7f65b362a
+libffi               arch:3.8.1-1              d66d5104f2139c0e62955584194dc58908b25286985f56ccee9147cc51d916d9
+libpng               arch:1.6.59-1             9132e506e26e81e104c3231bd56a4b45871d5205b7c5937f2d674d5e13a25aa6
+libutf8proc          arch:2.12.0-1             da078a7d6892f7dbce2b4a26b8ff08e2df073dcf08315e2c36e711dd248be59e
+libxml2              arch:2.15.4-1             3ec00c93e14e38db74e1ff21e173afb7214c5f7b6454b84bd57582b60f6aac2f
+pixman               arch:0.46.4-1             53201854e21e7a1c1a1684de1fe87b9edaccb81b445ff7be14b627f2db2b25a6
+seatd                arch:0.9.3-1              dbb8f74853d7cc832c491515419f273a08c494b81ec13be96613bf82aff3db7d
+tllist               arch:1.1.0-2              8384ec310a34b70931c44c2d2e4d2d2420ea03c7f8a34077efd0be6e43e4cdf9
+xkeyboard-config     arch:2.49-1               b6580796fcb8ea5d95fcdf250bff3ded5146120c1eb4a374ed56514b6ee20234
+freetype2            arch:2.15.0-1             7121e05cd22a5fb3d75f83439085053907ebfc628bba85f37962a1342864d255
+wayland              arch:1.26.0-1             bb9e76795266d044127101fdd697cb42e417c4df35e7226790d5536703b54cf7
+fontconfig           arch:2-2.18.4-1           efb9aba56bc6f35e0d2793ea268f2843f2c783496132287ffb6ec509fa714b8c
+harfbuzz             arch:15.2.0-1             196f0b09ca2cb14fadfad46341d315cbf8ac8daceb3ae315b4dd4674411c7057
+wayland-protocols    arch:1.50-1               ab0bcef424257c86cca805df6257e1e264ff23a61bd0ef62a09d357db9bf31a1
+fcft                 arch:3.3.3-1              77d215fd9dfb4c05482cc2ea23989f2a3fb12f9a0bd6a1fd1405c29a26b778fa
+libxkbcommon         arch:1.13.2-1             308bcc311dd5b014458ac68dc09dd52896b85e9f9fc73709320bc44612b9666c
+foot                 arch:1.28.0-2             1d5560a3ebaa829ea7b12195eb2bd6b6416a493d6ac8a77020e5315764ba6710

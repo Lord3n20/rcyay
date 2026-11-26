@@ -1,9 +1,12 @@
 #!/usr/bin/python3 -I
 """Pflegewerkzeug (Arch-Rechner): Bau-Reihenfolge für musl-Quellbauten aus den Arch-Sync-Datenbanken.
 
-  bootstrap/m5-ordnung [--haben DATEI] [--ohne NAME,…] [--ersatz ALT=NEU,…] ZIEL …
+  bootstrap/m5-ordnung [--haben DATEI] [--ohne NAME,…] [--ersatz ALT=NEU,…] [--warum NAME] ZIEL …
 
-Rechnet den Abschluss über depends + makedepends (checkdepends nicht: stage2 baut mit --nocheck),
+usrside_ohne-Zeilen aus overlay/BASIS/override.sh werden für diese Basis abgezogen (wie beim Bau).
+--warum NAME gibt die Kette ZIEL → … → NAME aus (zum Beschneiden).
+
+Rechnet den Abschluss über depends (des gebrauchten Teilpakets) + makedepends (je Basis) (checkdepends nicht: stage2 baut mit --nocheck),
 löst provides auf (bevorzugt gleichnamige Pakete), hört bei schon gebauten pkgbases auf (--haben: Liste
 bootstrap/stage2-liste o. ä., erste Spalte) und gibt die pkgbases in Bau-Reihenfolge aus.
 Zyklen werden mit "# Zyklus:" gemeldet (dann Hand-Reihenfolge bzw. Overlay ohne die Abhängigkeit).
@@ -16,7 +19,8 @@ import sys
 import tarfile
 
 args = sys.argv[1:]
-haben, ohne, ersatz = set(), set(), {}
+haben, ohne, ersatz, warum = set(), set(), {}, None
+OVERLAY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "overlay")
 ziele = []
 while args:
     a = args.pop(0)
@@ -28,6 +32,8 @@ while args:
                     haben.add(z[0])
     elif a == "--ohne":
         ohne |= set(args.pop(0).split(","))
+    elif a == "--warum":
+        warum = args.pop(0)
     elif a == "--ersatz":
         for p in args.pop(0).split(","):
             alt, neu = p.split("=")
@@ -62,6 +68,26 @@ for repo in ("core", "extra"):
                 anbieter[re.split(r"[<>=]", p)[0]].append(n)
 
 
+_ov = {}
+
+
+def overlay_ohne(base):
+    """usrside_ohne-Namen aus overlay/BASE/override.sh (Fortsetzungszeilen mit \\)."""
+    if base not in _ov:
+        n = set()
+        try:
+            with open(os.path.join(OVERLAY, base, "override.sh")) as f:
+                text = f.read().replace("\\\n", " ")
+            for z in text.splitlines():
+                z = z.split("#")[0].split()
+                if z and z[0] == "usrside_ohne":
+                    n |= set(z[1:])
+        except FileNotFoundError:
+            pass
+        _ov[base] = n
+    return _ov[base]
+
+
 def aufloesen(d):
     d = re.split(r"[<>=]", d)[0]
     d = ersatz.get(d, d)
@@ -79,7 +105,7 @@ def aufloesen(d):
 # Basen, die schon gebaut sind, liefern alle ihre Teilpakete
 basen_haben = haben | {n for n, p in pakete.items() if p["base"] in haben}
 kanten = collections.defaultdict(set)  # base -> bases, die vorher gebaut sein müssen
-gesehen, stapel = set(), []
+gesehen, basen_gesehen, stapel, vorgaenger = set(), set(), [], {}
 for z in ziele:
     r = aufloesen(z)
     if r:
@@ -91,18 +117,32 @@ while stapel:
         continue
     gesehen.add(n)
     kanten.setdefault(b, set())
-    # alle Teilpakete der Basis werden mitgebaut: auch ihre depends zählen
-    for m, p in pakete.items():
-        if p["base"] != b:
+    # depends nur des gebrauchten Pakets (nicht aller Teilpakete), makedepends einmal je Basis.
+    # Teilpakete, die niemand braucht, schaltet das Overlay ab (usrside_ohne / pkgname kürzen).
+    deps = list(pakete[n]["dep"])
+    if b not in basen_gesehen:
+        basen_gesehen.add(b)
+        deps += pakete[n]["make"]
+    for d in deps:
+        if re.split(r"[<>=]", d)[0] in overlay_ohne(b):
             continue
-        for d in p["dep"] + p["make"]:
-            r = aufloesen(d)
-            if not r or r in basen_haben:
-                continue
-            rb = pakete[r]["base"]
-            if rb != b:
-                kanten[b].add(rb)
-            stapel.append(r)
+        r = aufloesen(d)
+        if not r or r in basen_haben:
+            continue
+        rb = pakete[r]["base"]
+        if rb != b:
+            kanten[b].add(rb)
+        if r not in vorgaenger:
+            vorgaenger[r] = n
+        stapel.append(r)
+
+if warum:
+    k, x = [], aufloesen(warum) or warum
+    while x and len(k) < 50:
+        k.append(x)
+        x = vorgaenger.get(x)
+    print(" <- ".join(k) if len(k) > 1 or warum in ziele else f"{warum}: nicht im Abschluss")
+    sys.exit(0)
 
 # topologisch (Kahn), Zyklen melden
 rest = {b: set(v) for b, v in kanten.items()}
