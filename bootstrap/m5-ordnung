@@ -1,0 +1,126 @@
+#!/usr/bin/python3 -I
+"""Pflegewerkzeug (Arch-Rechner): Bau-Reihenfolge für musl-Quellbauten aus den Arch-Sync-Datenbanken.
+
+  bootstrap/m5-ordnung [--haben DATEI] [--ohne NAME,…] [--ersatz ALT=NEU,…] ZIEL …
+
+Rechnet den Abschluss über depends + makedepends (checkdepends nicht: stage2 baut mit --nocheck),
+löst provides auf (bevorzugt gleichnamige Pakete), hört bei schon gebauten pkgbases auf (--haben: Liste
+bootstrap/stage2-liste o. ä., erste Spalte) und gibt die pkgbases in Bau-Reihenfolge aus.
+Zyklen werden mit "# Zyklus:" gemeldet (dann Hand-Reihenfolge bzw. Overlay ohne die Abhängigkeit).
+"""
+import collections
+import os
+import re
+import subprocess
+import sys
+import tarfile
+
+args = sys.argv[1:]
+haben, ohne, ersatz = set(), set(), {}
+ziele = []
+while args:
+    a = args.pop(0)
+    if a == "--haben":
+        with open(args.pop(0)) as f:
+            for z in f:
+                z = z.split("#")[0].split()
+                if z:
+                    haben.add(z[0])
+    elif a == "--ohne":
+        ohne |= set(args.pop(0).split(","))
+    elif a == "--ersatz":
+        for p in args.pop(0).split(","):
+            alt, neu = p.split("=")
+            ersatz[alt] = neu
+    else:
+        ziele.append(a)
+
+pakete = {}  # name -> dict(base, depends, makedepends, provides)
+anbieter = collections.defaultdict(list)
+for repo in ("core", "extra"):
+    with tarfile.open(f"/var/lib/pacman/sync/{repo}.db") as t:
+        for m in t.getmembers():
+            if not m.name.endswith("/desc"):
+                continue
+            felder, akt = {}, None
+            for z in t.extractfile(m).read().decode().splitlines():
+                if z.startswith("%") and z.endswith("%"):
+                    akt = z.strip("%")
+                    felder[akt] = []
+                elif z and akt:
+                    felder[akt].append(z)
+            n = felder["NAME"][0]
+            if n in pakete:
+                continue
+            pakete[n] = {
+                "base": felder.get("BASE", [n])[0],
+                "dep": felder.get("DEPENDS", []),
+                "make": felder.get("MAKEDEPENDS", []),
+            }
+            anbieter[n].append(n)
+            for p in felder.get("PROVIDES", []):
+                anbieter[re.split(r"[<>=]", p)[0]].append(n)
+
+
+def aufloesen(d):
+    d = re.split(r"[<>=]", d)[0]
+    d = ersatz.get(d, d)
+    if d in ohne:
+        return None
+    if d in pakete:
+        return d
+    a = anbieter.get(d)
+    if not a:
+        print(f"# nicht auflösbar: {d}", file=sys.stderr)
+        return None
+    return sorted(a)[0]
+
+
+# Basen, die schon gebaut sind, liefern alle ihre Teilpakete
+basen_haben = haben | {n for n, p in pakete.items() if p["base"] in haben}
+kanten = collections.defaultdict(set)  # base -> bases, die vorher gebaut sein müssen
+gesehen, stapel = set(), []
+for z in ziele:
+    r = aufloesen(z)
+    if r:
+        stapel.append(r)
+while stapel:
+    n = stapel.pop()
+    b = pakete[n]["base"]
+    if n in gesehen or n in basen_haben:
+        continue
+    gesehen.add(n)
+    kanten.setdefault(b, set())
+    # alle Teilpakete der Basis werden mitgebaut: auch ihre depends zählen
+    for m, p in pakete.items():
+        if p["base"] != b:
+            continue
+        for d in p["dep"] + p["make"]:
+            r = aufloesen(d)
+            if not r or r in basen_haben:
+                continue
+            rb = pakete[r]["base"]
+            if rb != b:
+                kanten[b].add(rb)
+            stapel.append(r)
+
+# topologisch (Kahn), Zyklen melden
+rest = {b: set(v) for b, v in kanten.items()}
+for v in list(rest.values()):
+    for x in v:
+        rest.setdefault(x, set())
+reihe = []
+while rest:
+    frei = sorted(b for b, v in rest.items() if not v)
+    if not frei:
+        # kleinsten Zyklus grob melden und die Basis mit den wenigsten offenen Abhängigkeiten vorziehen
+        b = min(rest, key=lambda x: (len(rest[x]), x))
+        print(f"# Zyklus: {b} wartet auf {' '.join(sorted(rest[b]))}", file=sys.stderr)
+        frei = [b]
+    for b in frei:
+        reihe.append(b)
+        del rest[b]
+    for v in rest.values():
+        v.difference_update(frei)
+for b in reihe:
+    print(b)
