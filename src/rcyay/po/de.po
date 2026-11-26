@@ -1029,3 +1029,52 @@ msgstr "    --enable / --disable NAME...        Dienste für jedes Init ein-/aus
 #: src/rcyay/dienste.c
 msgid "    --init systemd|busybox|runit|s6     switch init, regenerate all services\n"
 msgstr "    --init systemd|busybox|runit|s6     Init umschalten, alle Dienste neu erzeugen\n"
+
+#: src/rcyay/extra.c
+msgid "    --provides list|apply  show VirtualProvides / update the package usrside-provides\n"
+msgstr "    --provides list|apply  VirtualProvides zeigen / Paket usrside-provides anpassen\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "%s:%d: VirtualProvides: invalid entry '%s' (expected NAME or NAME=VERSION)\n"
+msgstr "%s:%d: VirtualProvides: ungültiger Eintrag „%s“ (erwartet NAME oder NAME=VERSION)\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "VirtualProvides is empty - removing %s...\n"
+msgstr "VirtualProvides ist leer – entferne %s …\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "%s stays installed: installed packages still need what it provides\n"
+msgstr "%s bleibt installiert: installierte Pakete brauchen noch, was es bereitstellt\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "cannot create %s: %s\n"
+msgstr "kann %s nicht anlegen: %s\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "cannot create the package %s\n"
+msgstr "kann das Paket %s nicht erzeugen\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "VirtualProvides changed - installing %s %s...\n"
+msgstr "VirtualProvides geändert – installiere %s %s …\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "failed to install %s (VirtualProvides)\n"
+msgstr "konnte %s nicht installieren (VirtualProvides)\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "--provides: unknown command '%s' (list, apply)\n"
+msgstr "--provides: unbekannter Befehl „%s“ (list, apply)\n"
+
+#: src/rcyay/vprov.c
+#, c-format
+msgid "%s is not up to date - run rcyay --provides apply (as root)\n"
+msgstr "%s ist nicht aktuell – rcyay --provides apply (als root) ausführen\n"

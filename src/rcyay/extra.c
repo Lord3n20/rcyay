@@ -312,6 +312,7 @@ void rc_usage(void)
 	fputs(_("    --nodiff       do not show PKGBUILD/diff      --nocheck  skip check()\n"), stdout);
 	fputs(_("    --pgpfetch / --nopgpfetch  import missing validpgpkeys with gpg (default: yes)\n"), stdout);
 	fputs(_("    --force-musl   build -bin/binary-source packages on musl anyway (not nur-glibc.txt)\n"), stdout);
+	fputs(_("    --provides list|apply  show VirtualProvides / update the package usrside-provides\n"), stdout);
 	fputs(_("\nservices (rcyay-dienste, for busybox/runit/s6):\n"), stdout);
 	fputs(_("    --services update|remove [UNIT...]  translate systemd units (hook; stdin if none)\n"), stdout);
 	fputs(_("    --services list|apply               show services / re-enable all in the init\n"), stdout);

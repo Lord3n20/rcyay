@@ -133,6 +133,16 @@ static int parse_long(int argc, char *argv[], int i)
 	if(strcmp(name, "bottomup") == 0) { R.bottomup = 1; return 1; }
 	if(strcmp(name, "nocheck") == 0) { R.nocheck = 1; return 1; }
 	if(strcmp(name, "force-musl") == 0) { R.force_musl = 1; return 1; }
+	if(strcmp(name, "provides") == 0) {
+		R.provcmd = "list";
+		if(val) {
+			R.provcmd = val;
+		} else if(i + 1 < argc && (strcmp(argv[i + 1], "list") == 0 || strcmp(argv[i + 1], "apply") == 0)) {
+			R.provcmd = argv[i + 1];
+			used = 2;
+		}
+		return used;
+	}
 	if(strcmp(name, "enable") == 0) { R.svcmd = "enable"; return 1; }
 	if(strcmp(name, "disable") == 0) { R.svcmd = "disable"; return 1; }
 	if(strcmp(name, "services") == 0 || strcmp(name, "dienste") == 0 || strcmp(name, "init") == 0) {

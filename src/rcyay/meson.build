@@ -8,4 +8,5 @@ rcyay_sources = files('''
   extra.c
   unit.h unit.c
   dienste.c
+  vprov.c
 '''.split())

@@ -108,6 +108,22 @@ int main(int argc, char *argv[])
 		return rc_dienste_main();
 	}
 
+	/* VirtualProvides: --provides list|apply; vor -U das Metapaket anpassen */
+	if(R.provcmd || (R.op == 'U' && !R.help && !R.cnt['p'])) {
+		if(rc_readconf() != 0 || rc_alpm_init() != 0) {
+			return 1;
+		}
+		if(R.provcmd) {
+			ret = rc_vprov_main(R.provcmd);
+			rc_alpm_release();
+			return ret;
+		}
+		if(rc_vprov_sync() != 0) {
+			rc_alpm_release();
+			return 1;
+		}
+	}
+
 	/* reine pacman-Operationen unverändert an pacman */
 	if(R.op && strchr("DFQRTU", R.op)) {
 		return rc_pacman_inproc(R.tokens, R.targets);

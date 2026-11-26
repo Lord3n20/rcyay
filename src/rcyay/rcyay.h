@@ -72,6 +72,8 @@ typedef struct {
 	char *overlaydir;         /* Overlay (Standard /usr/share/rcyay/overlay): nur-glibc.txt, dienste/ */
 	int pgpfetch;               /* fehlende validpgpkeys importieren (PGPFetch, Standard ja) */
 	char *keyserver;          /* PGPKeyserver, NULL = gpg-Standard (wie yay) */
+	alpm_list_t *vprovides;   /* char*: VirtualProvides (NAME oder NAME=VERSION) */
+	const char *provcmd;      /* --provides list|apply */
 	char *cli_aururl, *cli_builddir;
 	int cli_pgpfetch;         /* 0 = aus rcyay.conf, 1 = --pgpfetch, 2 = --nopgpfetch */
 
@@ -145,6 +147,13 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 
 /* dienste.c */
 int rc_dienste_main(void);
+
+/* vprov.c */
+int rc_vprov_valid(const char *s);
+void rc_vprov_add(const char *file, int line, const char *value);
+int rc_vprov_satisfies(const char *dep);
+int rc_vprov_sync(void);
+int rc_vprov_main(const char *cmd);
 
 /* extra.c */
 int rc_op_clean(void);

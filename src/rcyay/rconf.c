@@ -97,6 +97,7 @@ static int conf_cb(const char *file, int line, const char *section,
 	else if(!strcmp(key, "Overlay")) set(&R.overlaydir, value);
 	else if(!strcmp(key, "SortBy")) set(&R.conf_sortby, value);
 	else if(!strcmp(key, "PGPKeyserver")) set(&R.keyserver, value);
+	else if(!strcmp(key, "VirtualProvides")) rc_vprov_add(file, line, value);
 	else if(!strcmp(key, "PGPFetch")) {
 		if(parse_bool(value, &R.pgpfetch) != 0) {
 			rc_warn(_("%s:%d: %s: expected yes or no\n"), file, line, key);

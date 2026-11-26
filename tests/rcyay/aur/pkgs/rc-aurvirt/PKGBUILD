@@ -1,0 +1,10 @@
+pkgname=rc-aurvirt
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="AUR-Paket mit versionierter virtueller Abhaengigkeit (VirtualProvides)"
+depends=('rc-virt-b>=1.5')
+makedepends=(rc-virt-a)
+build() { id -un > "$srcdir/wer"; }
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver $(cat "$srcdir/wer")" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

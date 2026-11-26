@@ -81,7 +81,8 @@ static void jobs_free(void)
 static int cb_installed(void *ud, const char *dep)
 {
 	(void)ud;
-	return alpm_find_satisfier(alpm_db_get_pkgcache(alpm_get_localdb(R.handle)), dep) != NULL;
+	return alpm_find_satisfier(alpm_db_get_pkgcache(alpm_get_localdb(R.handle)), dep) != NULL ||
+		rc_vprov_satisfies(dep);
 }
 
 static char *cb_repo(void *ud, const char *dep)
@@ -982,6 +983,11 @@ int rc_op_sync(void)
 			return y ? 0 : rc_pacman_inproc(R.tokens, NULL);
 		}
 		return rc_pacman_inproc(R.tokens, NULL);
+	}
+
+	/* VirtualProvides: Metapaket vor der ersten Transaktion anpassen */
+	if(rc_vprov_sync() != 0) {
+		return 1;
 	}
 
 	if(y && !R.aur_only) {

@@ -1,0 +1,8 @@
+pkgname=rc-needsvirt
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="Repo-Paket mit virtueller Abhaengigkeit (VirtualProvides)"
+depends=(rc-virt-a)
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo "$pkgname $pkgver" > "$pkgdir/usr/share/rcyay-test/$pkgname"; }

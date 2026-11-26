@@ -10,3 +10,4 @@ lib/libaur/resolve.c
 lib/libaur/rpc.c
 lib/libaur/srcinfo.c
 src/rcyay/dienste.c
+src/rcyay/vprov.c

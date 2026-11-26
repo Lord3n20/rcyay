@@ -26,6 +26,7 @@ ver()      { [ "$(pacman -Q "$1" 2>/dev/null | cut -d' ' -f2)" = "$2" ]; }
 has()      { grep -q -- "$1" "$W/out"; }
 hasnot()   { ! grep -q -- "$1" "$W/out"; }
 aufraeumen() { rm -f /var/cache/pacman/pkg/rc-*; local p; p=$(pacman -Qq 2>/dev/null | grep '^rc-'); [ -n "$p" ] && pacman -Rdd --noconfirm $p >/dev/null 2>&1; true; }
+vp_weg() { pacman -Q usrside-provides >/dev/null 2>&1 && pacman -Rdd --noconfirm usrside-provides >/dev/null 2>&1; rm -f /var/cache/pacman/pkg/usrside-provides-*; true; }
 
 # ---------- Aufbau ----------
 cp -r "$HIER/pkgs" "$W/aur"; cp -r "$HIER/repo" "$W/repo-src"; cp -r "$HIER/pkgs-v2" "$W/aur-v2"
@@ -58,7 +59,7 @@ P
 chown nobody: "$W/aur/rc-pgp/PKGBUILD"
 for d in "$W"/aur/* "$W"/aur-v2/* "$W"/repo-src/*; do srcinfo "$d" || { echo "Bail out! SRCINFO $d"; exit 2; }; done
 for d in "$W"/repo-src/*; do
-  runuser -u nobody -- bash -c "cd '$d' && PKGDEST='$W/repo' makepkg -f >/dev/null 2>&1" || { echo "Bail out! Repo-Paket $d"; exit 2; }
+  runuser -u nobody -- bash -c "cd '$d' && PKGDEST='$W/repo' makepkg -f -d >/dev/null 2>&1" || { echo "Bail out! Repo-Paket $d"; exit 2; }
 done
 repo-add -q "$W/repo/rcyaytest.db.tar.gz" "$W"/repo/*.pkg.tar.* >/dev/null || { echo "Bail out! repo-add"; exit 2; }
 { cat /etc/pacman.conf; printf '\n[rcyaytest]\nSigLevel = Never\nServer = file://%s/repo\n' "$W"; } > "$W/pacman.conf"
@@ -75,7 +76,7 @@ grep -v BuildDir "$W/rcyay.conf" > "$W/rcyay-nutzer.conf"
 chmod 644 "$W"/*.conf
 python3 "$HIER/server.py" --port "$PORT" --pkgs "$W/aur" --repo-dir "$W/repo-src" --log "$W/server.log" --keys "$W/keys" >"$W/server.out" 2>&1 &
 SRV=$!
-trap 'kill $SRV 2>/dev/null; aufraeumen' EXIT
+trap 'kill $SRV 2>/dev/null; aufraeumen; vp_weg' EXIT
 for _ in $(seq 50); do grep -q bereit "$W/server.out" 2>/dev/null && break; sleep 0.1; done
 aufraeumen
 rm -f /tmp/rcyay-devver
@@ -265,6 +266,74 @@ if locale -a 2>/dev/null | grep -qi '^de_DE.utf-\?8$'; then
 else
   for t in "-Ss" "-Si" "-S" "Meldungen"; do N=$((N+1)); echo "ok $N - # SKIP de_DE $t: Locale fehlt (locale-gen)"; done
 fi
+
+# ---------- VirtualProvides (Metapaket usrside-provides) ----------
+aufraeumen; vp_weg
+vpconf() { { cat "${VPBASE:-$W/rcyay.conf}"; for l in "$@"; do echo "VirtualProvides = $l"; done; } > "$W/vp.conf"; chmod 644 "$W/vp.conf"; }
+VP() { "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/vp.conf" "$@" >"$W/out" 2>&1; }
+vprov() { pacman -Qi usrside-provides 2>/dev/null | sed -n 's/^Provides *: //p' | tr -s ' ' '\n' | sort | tr '\n' ' '; }
+vpconf
+VP -S --noconfirm rc-needsvirt; r=$?
+check "ohne VirtualProvides: rc-needsvirt nicht installierbar" bash -c "[ $r != 0 ] && ! pacman -Q rc-needsvirt >/dev/null 2>&1"
+check "ohne VirtualProvides: kein usrside-provides" notinst usrside-provides
+vpconf "rc-virt-a rc-virt-b=2.0" "rc-virt-a bad>=1 rc-virt-c"
+VP --provides list
+check "--provides list: 3 Einträge, doppelte zusammengefasst" [ "$(grep -c '^rc-virt' "$W/out")" = 3 ]
+check "ungültiger Eintrag gemeldet" has "invalid entry 'bad>=1'"
+check "--provides list: Metapaket nicht aktuell" has "not up to date"
+VP -S --noconfirm rc-needsvirt; r=$?
+check "Repo-Paket mit virtueller Abh. installiert" bash -c "[ $r = 0 ] && pacman -Q rc-needsvirt >/dev/null"
+check "usrside-provides 1-1 erzeugt" ver usrside-provides 1-1
+check "provides = Liste" [ "$(vprov)" = "rc-virt-a rc-virt-b=2.0 rc-virt-c " ]
+check "usrside-provides ausdrücklich installiert" reason usrside-provides Explicitly
+check "pacman -T: rc-virt-a und rc-virt-b>=1.5 erfüllt" pacman -T rc-virt-a 'rc-virt-b>=1.5'
+check "pacman -T: rc-virt-b>2.0 nicht erfüllt" bash -c "! pacman -T 'rc-virt-b>2.0' >/dev/null"
+check "keine Paketdatei liegen geblieben" bash -c "! ls '$W'/bau-root/.provides/*.pkg.tar >/dev/null 2>&1"
+check "Paket ohne Dateien" [ -z "$(pacman -Qlq usrside-provides)" ]
+VP --provides list
+check "--provides list: jetzt aktuell" hasnot "not up to date"
+VP -S --noconfirm rc-hello
+check "Liste unverändert: kein neues Metapaket" bash -c "grep -q . '$W/out' && ! grep -q 'VirtualProvides changed' '$W/out' && [ \"\$(pacman -Q usrside-provides | cut -d' ' -f2)\" = 1-1 ]"
+VP -S --noconfirm rc-aurvirt; r=$?
+check "AUR: versionierte virtuelle Abh. (rc-virt-b>=1.5) erfüllt, gebaut" bash -c "[ $r = 0 ] && pacman -Q rc-aurvirt >/dev/null"
+check "AUR: keine Repo-Abh. für virtuelle Namen" hasnot "Installing repo dependencies"
+vpconf "rc-virt-a rc-virt-b=1.0 rc-virt-c"
+VP -S --noconfirm rc-hello; r=$?
+check "Version zu klein für installiertes rc-aurvirt -> pacman verweigert, Abbruch" bash -c "[ $r != 0 ] && grep -q 'failed to install usrside-provides' '$W/out'"
+check "usrside-provides unverändert 1-1" ver usrside-provides 1-1
+pacman -Rdd --noconfirm rc-aurvirt >/dev/null 2>&1
+VP -S --noconfirm rc-aurvirt; r=$?
+check "rc-virt-b=1.0: Metapaket 2-1, AUR-Plan meldet fehlende Abh." bash -c "[ $r != 0 ] && grep -q 'dependency not found: rc-virt-b>=1.5' '$W/out' && [ \"\$(pacman -Q usrside-provides | cut -d' ' -f2)\" = 2-1 ]"
+# -U: lokales Paket mit virtueller Abh.; Liste ändert sich -> vor -U angepasst
+mkdir -p "$W/uvirt"; cat > "$W/uvirt/PKGBUILD" <<'P'
+pkgname=rc-uvirt
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+depends=(rc-virt-d)
+package() { mkdir -p "$pkgdir/usr/share/rcyay-test"; echo rc-uvirt > "$pkgdir/usr/share/rcyay-test/rc-uvirt"; }
+P
+chown -R nobody: "$W/uvirt"
+runuser -u nobody -- bash -c "cd '$W/uvirt' && makepkg -f -d >/dev/null 2>&1"
+UP=$(ls "$W"/uvirt/rc-uvirt-*.pkg.tar.* 2>/dev/null | head -1)
+VP -U --noconfirm "$UP"; r=$?
+check "-U ohne rc-virt-d in der Liste scheitert" bash -c "[ $r != 0 ] && ! pacman -Q rc-uvirt >/dev/null 2>&1"
+vpconf "rc-virt-a rc-virt-b=1.0 rc-virt-c rc-virt-d"
+VP -U --noconfirm "$UP"; r=$?
+check "-U: Metapaket vorher angepasst (3-1), rc-uvirt installiert" bash -c "[ $r = 0 ] && pacman -Q rc-uvirt >/dev/null && [ \"\$(pacman -Q usrside-provides | cut -d' ' -f2)\" = 3-1 ]"
+# leere Liste: entfernen nur, wenn nichts mehr davon abhängt
+vpconf
+VP -S --noconfirm rc-hello; r=$?
+check "leere Liste, Abh. noch gebraucht: bleibt, Warnung, Lauf ok" bash -c "[ $r = 0 ] && grep -q 'stays installed' '$W/out' && pacman -Q usrside-provides >/dev/null"
+aufraeumen
+VP --provides apply; r=$?
+check "leere Liste, nichts hängt ab: --provides apply entfernt usrside-provides" bash -c "[ $r = 0 ] && ! pacman -Q usrside-provides >/dev/null 2>&1"
+# Nutzer über sudo, Bauordner im Home
+VPBASE="$W/rcyay-nutzer.conf" vpconf "rc-virt-a"
+runuser -u "$NUTZER" -- env HOME="$(getent passwd "$NUTZER" | cut -d: -f6)" "$RCYAY" --config "$W/pacman.conf" --rcyayconf "$W/vp.conf" -S --noconfirm rc-needsvirt >"$W/out" 2>&1; r=$?
+check "Nutzer: Metapaket über sudo, rc-needsvirt installiert" bash -c "[ $r = 0 ] && pacman -Q rc-needsvirt >/dev/null && [ '$(vprov)' = 'rc-virt-a ' ]"
+aufraeumen; vp_weg
 
 # ---------- als normaler Nutzer (sudo) ----------
 aufraeumen
