@@ -1,0 +1,239 @@
+#!/bin/bash
+# glibc-rootfs: Rootfs der glibc-Variante von UsrsideOS aus Arch-Binärpaketen + Repo usrside (PLAN.md 1.2, M4).
+#   bootstrap/glibc-rootfs [ZIEL]          (Standard /var/tmp/usrside/glibc/rootfs; NUR in einer Bau-VM als root)
+# Ablauf:
+#   1. baut das Repo usrside: pkg/{rcyay,usrside-init,usrside-busybox,usrside-base,usrside-udev} aus diesem Baum,
+#      dazu runit, skalibs, execline, s6, s6-linux-init, usrside-dienste aus den PKGBUILDs von rcyay-e2
+#      (Branch bootstrap, bootstrap/pakete; beim Bau nur depends musl → glibc, die Dateien bleiben unverändert)
+#   2. pacman -r ZIEL: core/extra/multilib (Arch) + usrside → usrside-base, alle 4 Inits, openssh, dhcpcd, seatd
+#   3. Schlüsselbund, rcyay.conf (Init, VirtualProvides je PROFIL), Dienste für jedes Init eingeschaltet
+# Ergebnis (Schnittstelle zu bootstrap/abbild --rootfs, mit rcyay-e2 abgestimmt):
+#   ZIEL/                     vollständiges / ohne Kernel, Module, fstab, hostname, root-Schlüssel (macht abbild)
+#   ZIEL/srv/usrside/         Repo usrside (pacman.conf im Abbild: Server = file:///srv/usrside)
+#   ZIEL/usr/share/usrside/inits   Zeilen "INIT PFAD" für init= (→ usrside-glibc.inits)
+#   ZIEL.pakete               Paketliste mit Version (pacman -Q)
+# Umgebung:
+#   PROFIL    standard (Standard): VirtualProvides nur, was BusyBox sicher erfüllt (which); GNU-Werkzeuge
+#             kommen über die Abhängigkeiten von pacman/systemd mit (Zuverlässigkeit vor Reinheit)
+#             minimal: zusätzlich coreutils findutils grep sed gawk diffutils (BusyBox statt GNU; makepkg und
+#             manche Paketskripte können dann scheitern – nur als Option)
+#   INIT      Init in /etc/rcyay.conf (runit, Standard); die Dienste werden trotzdem für alle Inits eingeschaltet
+#   EXTRA     weitere Pakete (z. B. "niri foot mesa")
+#   NUTZER    baut mit makepkg (Standard bau)        REPO  Repo-Ordner (Standard /var/tmp/usrside/glibc/repo)
+#   BOOTSTRAP_REF  git-Ref mit den Paketen von rcyay-e2 (Standard bootstrap)    NEU_BAUEN=1  Repo neu bauen
+set -euo pipefail
+HIER=$(cd "$(dirname "$0")" && pwd)
+SRC=$(cd "$HIER/.." && pwd)
+ARBEIT=${ARBEIT:-/var/tmp/usrside/glibc}
+ZIEL=${1:-$ARBEIT/rootfs}
+REPO=${REPO:-$ARBEIT/repo}
+PROFIL=${PROFIL:-standard}
+INIT=${INIT:-runit}
+NUTZER=${NUTZER:-bau}
+BOOTSTRAP_REF=${BOOTSTRAP_REF:-bootstrap}
+EXTRA=${EXTRA:-}
+export LANG=C LC_ALL=C
+
+meldung() { printf '\033[1m==> %s\033[0m\n' "$*"; }
+abbruch() { printf 'glibc-rootfs: %s\n' "$*" >&2; exit 1; }
+((EUID == 0)) || abbruch "braucht root (Wegwerf-Bau-VM)"
+case $PROFIL in
+	standard) VPROV="which" ;;
+	minimal) VPROV="which coreutils findutils grep sed gawk diffutils" ;;
+	*) abbruch "PROFIL muss standard oder minimal sein" ;;
+esac
+case $INIT in systemd | busybox | runit | s6) ;; *) abbruch "INIT: systemd, busybox, runit oder s6" ;; esac
+for b in makepkg repo-add pacman git; do command -v "$b" >/dev/null || abbruch "$b fehlt"; done
+id "$NUTZER" >/dev/null 2>&1 || abbruch "Nutzer $NUTZER fehlt"
+
+W=$ARBEIT/bau
+mkdir -p "$ARBEIT" "$W"
+
+# ---------- 1. Repo usrside ----------
+# Pakete in Bau-Reihenfolge: Ordner|Quelle (main = dieser Baum, e2 = Branch bootstrap)
+LISTE="rcyay|main usrside-init|main usrside-busybox|main usrside-base|main usrside-udev|main
+skalibs|e2 execline|e2 s6|e2 s6-linux-init|e2 runit|e2 usrside-dienste|e2"
+# Bauabhängigkeiten aus dem eigenen Repo, die vorher auf dem Bauwirt installiert sein müssen
+declare -A WIRT=([execline]=skalibs [s6]="skalibs execline" [s6-linux-init]="skalibs execline s6")
+
+bauen() {
+	local name=$1 quelle=$2 d=$W/pkg/$1
+	if [[ ${NEU_BAUEN:-0} != 1 ]] && compgen -G "$REPO/$name-[0-9]*.pkg.tar.zst" >/dev/null; then
+		echo "   $name: schon im Repo"
+		return 0
+	fi
+	rm -rf "$d"
+	mkdir -p "$d"
+	if [[ $quelle == main ]]; then
+		cp -r "$SRC/pkg/$name/." "$d/"
+	else
+		git -c safe.directory='*' -C "$SRC" archive "$BOOTSTRAP_REF" "bootstrap/pakete/$name" |
+			tar -x -C "$d" --strip-components=3
+		# musl-Variante → glibc: nur die Laufzeit-Abhängigkeit tauschen
+		sed -i -E '/^(make)?depends=/s/\bmusl\b/glibc/' "$d/PKGBUILD"
+	fi
+	chown -R "$NUTZER": "$W/pkg"
+	local dep
+	for dep in ${WIRT[$name]:-}; do
+		pacman -Q "$dep" >/dev/null 2>&1 || pacman -U --noconfirm --asdeps "$REPO"/"$dep"-[0-9]*.pkg.tar.zst >/dev/null
+	done
+	meldung "makepkg $name ($quelle)"
+	runuser -u "$NUTZER" -- bash -lc "cd '$d' && RCYAY_SRC='$SRC' PKGDEST='$REPO' makepkg -f -d --noconfirm" \
+		>"$W/$name.log" 2>&1 || { tail -n 30 "$W/$name.log"; abbruch "makepkg $name gescheitert (Log $W/$name.log)"; }
+}
+
+meldung "Repo usrside in $REPO"
+[[ ${NEU_BAUEN:-0} == 1 ]] && rm -rf "$REPO"
+mkdir -p "$REPO"
+chmod 777 "$REPO"
+pacman -Q busybox >/dev/null 2>&1 || pacman -S --noconfirm --needed busybox >/dev/null
+pacman -Fy >/dev/null 2>&1 || :   # usrside-busybox fragt pacman -F nach freien Pfaden
+# alte gleichnamige Bauten im Cache des Wirts würden pacman -U/-S verwirren
+rm -f /var/cache/pacman/pkg/rcyay-[0-9]* /var/cache/pacman/pkg/usrside-* 2>/dev/null || :
+for e in $LISTE; do bauen "${e%|*}" "${e#*|}"; done
+rm -f "$REPO"/usrside.db* "$REPO"/usrside.files*
+repo-add -q "$REPO/usrside.db.tar.gz" "$REPO"/*.pkg.tar.zst
+
+# ---------- 2. Rootfs ----------
+meldung "Rootfs $ZIEL (Profil $PROFIL, Init $INIT)"
+EINGEH=()
+aushaengen() {
+	local i
+	for ((i = ${#EINGEH[@]} - 1; i >= 0; i--)); do umount -l "${EINGEH[i]}" 2>/dev/null || :; done
+	EINGEH=()
+}
+trap aushaengen EXIT
+einhaengen() { # TYP QUELLE ZIELPFAD [OPTIONEN]
+	mkdir -p "$3"
+	mount -t "$1" ${4:+-o "$4"} "$2" "$3"
+	EINGEH+=("$3")
+}
+if [[ -e $ZIEL ]]; then
+	findmnt -R "$ZIEL" >/dev/null 2>&1 && abbruch "$ZIEL hat noch Einhängungen"
+	rm -rf "$ZIEL"
+fi
+mkdir -p "$ZIEL"/{var/lib/pacman,var/cache/pacman/pkg,etc,srv,dev,proc,sys,run,tmp}
+chmod 1777 "$ZIEL/tmp"
+einhaengen proc proc "$ZIEL/proc" nosuid,noexec,nodev
+einhaengen sysfs sys "$ZIEL/sys" ro,nosuid,noexec,nodev
+einhaengen devtmpfs udev "$ZIEL/dev" mode=0755,nosuid
+einhaengen devpts devpts "$ZIEL/dev/pts" mode=0620,gid=5,nosuid,noexec
+einhaengen tmpfs run "$ZIEL/run" nosuid,nodev,mode=0755
+
+# pacman.conf des Systems: Arch-Repos + usrside (zuerst), multilib für Steam
+spiegel=$(grep -m1 '^Server' /etc/pacman.d/mirrorlist | sed 's/^Server *= *//')
+[[ -n $spiegel ]] || spiegel='https://geo.mirror.pkgbuild.com/$repo/os/$arch'
+konf() { # $1 = Server für usrside
+	cat <<-EOF
+		# /etc/pacman.conf – UsrsideOS glibc (bootstrap/glibc-rootfs)
+		[options]
+		HoldPkg     = pacman glibc rcyay usrside-base
+		Architecture = x86_64
+		CheckSpace
+		ParallelDownloads = 5
+		DownloadUser = alpm
+		SigLevel    = Required DatabaseOptional
+		LocalFileSigLevel = Optional
+
+		# eigenes Repo (rcyay, usrside-*, runit, s6); unsigniert, liegt lokal im System
+		[usrside]
+		SigLevel = Optional TrustAll
+		Server = $1
+
+		[core]
+		Include = /etc/pacman.d/mirrorlist
+
+		[extra]
+		Include = /etc/pacman.d/mirrorlist
+
+		[multilib]
+		Include = /etc/pacman.d/mirrorlist
+	EOF
+}
+konf "file://$REPO" >"$W/pacman.conf"
+
+PAKETE="usrside-base usrside-udev systemd openssh dhcpcd seatd runit s6 s6-linux-init usrside-dienste $EXTRA"
+P=(pacman --config "$W/pacman.conf" -r "$ZIEL" --cachedir "$ZIEL/var/cache/pacman/pkg" --cachedir /var/cache/pacman/pkg
+	--noconfirm)
+[[ -d /hostcache ]] && P+=(--cachedir /hostcache)
+"${P[@]}" -Sy >/dev/null
+# rcyay aus dem frischen Repo (statisch, läuft auf dem Wirt) – kann VirtualProvides vor der Installation anwenden
+RCW=$W/rcyay-wirt
+bsdtar -xOf "$REPO"/rcyay-[0-9]*.pkg.tar.zst usr/bin/rcyay >"$RCW"
+chmod 755 "$RCW"
+# eigene rcyay.conf für die Installation (die Datei im Ziel gehört usrside-init, kommt erst mit dem Paket)
+RCONF=$W/rcyay.conf
+bsdtar -xOf "$REPO"/usrside-init-[0-9]*.pkg.tar.zst etc/rcyay.conf >"$RCONF"
+setze() { # SCHLÜSSEL WERT [DATEI] in rcyay.conf ([options])
+	local f=${3:-$RCONF}
+	if grep -q "^#\?$1 *=" "$f"; then
+		sed -i "0,/^#\?$1 *=.*/s||$1 = $2|" "$f"
+	else
+		printf '%s = %s\n' "$1" "$2" >>"$f"
+	fi
+}
+setze VirtualProvides "$VPROV"
+RC=("$RCW" --config "$W/pacman.conf" --root "$ZIEL" --rcyayconf "$RCONF" --noconfirm)
+if [[ $PROFIL == minimal ]]; then
+	# usrside-provides vorher anlegen, damit pacman die GNU-Werkzeuge gar nicht erst holt
+	"${P[@]}" -S --needed filesystem >/dev/null
+	"${RC[@]}" --provides apply
+fi
+# Installation mit rcyay (VirtualProvides + --overwrite für BusyBox-Links); Paketcache wie pacman
+# shellcheck disable=SC2086
+"${RC[@]}" --cachedir "$ZIEL/var/cache/pacman/pkg" --cachedir /var/cache/pacman/pkg -S --needed $PAKETE
+"${RC[@]}" --provides apply >/dev/null
+cp "$RCONF" "$ZIEL/etc/rcyay.conf"
+inch() { chroot "$ZIEL" /usr/bin/env -i PATH=/usr/bin:/usr/lib/busybox/bin HOME=/root LANG=C "$@"; }
+
+# ---------- 3. Einrichtung ----------
+meldung "Einrichtung"
+konf "file:///srv/usrside" >"$ZIEL/etc/pacman.conf"
+grep -q '^Server' "$ZIEL/etc/pacman.d/mirrorlist" 2>/dev/null || printf 'Server = %s\n' "$spiegel" >>"$ZIEL/etc/pacman.d/mirrorlist"
+rm -rf "$ZIEL/srv/usrside"
+cp -a "$REPO" "$ZIEL/srv/usrside"
+chmod 755 "$ZIEL/srv/usrside"
+rm -rf "$ZIEL/var/cache/pacman/pkg/"*
+# Schlüsselbund (archlinux-keyring bringt die Schlüssel, initialisiert aber nicht)
+inch pacman-key --init >/dev/null 2>&1
+inch pacman-key --populate archlinux >/dev/null 2>&1
+# Zeit, Sprache
+ln -sf /usr/share/zoneinfo/Europe/Berlin "$ZIEL/etc/localtime"
+grep -q '^de_DE.UTF-8' "$ZIEL/etc/locale.gen" 2>/dev/null || printf 'de_DE.UTF-8 UTF-8\nen_US.UTF-8 UTF-8\n' >>"$ZIEL/etc/locale.gen"
+inch locale-gen >/dev/null 2>&1 || :
+printf 'LANG=de_DE.UTF-8\n' >"$ZIEL/etc/locale.conf"
+# root ohne Passwort-Anmeldung (Zugang per SSH-Schlüssel, den abbild einträgt)
+inch passwd -l root >/dev/null 2>&1 || :
+
+# Dienste unter systemd
+inch systemctl enable sshd.service dhcpcd.service seatd.service >/dev/null 2>&1 ||
+	abbruch "systemctl enable gescheitert"
+# Dienste unter BusyBox init, runit, s6: sshd/dhcpcd/getty liefert usrside-dienste (/etc/sv),
+# seatd übersetzt rcyay-dienste aus seatd.service – je Init eine eigene rcyay.conf
+for i in busybox s6 runit; do
+	sed "s/^#\?Init *=.*/Init = $i/" "$ZIEL/etc/rcyay.conf" >"$W/rcyay-$i.conf"
+	grep -q '^Init *=' "$W/rcyay-$i.conf" || printf 'Init = %s\n' "$i" >>"$W/rcyay-$i.conf"
+	"$RCW" --root "$ZIEL" --rcyayconf "$W/rcyay-$i.conf" --services enable seatd
+	"$RCW" --root "$ZIEL" --rcyayconf "$W/rcyay-$i.conf" --services apply
+done
+setze Init "$INIT" "$ZIEL/etc/rcyay.conf"
+# Init-Pfade für init= (Vertrag mit abbild / test-rcyay)
+install -d "$ZIEL/usr/share/usrside"
+cat >"$ZIEL/usr/share/usrside/inits" <<-'EOF'
+	systemd /usr/lib/systemd/systemd
+	busybox /usr/bin/init
+	runit /usr/bin/runit-init
+	s6 /etc/s6-linux-init/current/bin/init
+EOF
+for p in /usr/lib/systemd/systemd /usr/bin/init /usr/bin/runit-init /etc/s6-linux-init/current/bin/init; do
+	[[ -e $ZIEL$p || -L $ZIEL$p ]] || abbruch "Init-Pfad fehlt: $p"
+done
+
+# ---------- Prüfen + Bericht ----------
+inch rcyay -V >/dev/null || abbruch "rcyay -V im Rootfs scheitert"
+inch pacman -Dk >/dev/null || abbruch "pacman -Dk im Rootfs scheitert"
+inch pacman -Q >"$ZIEL.pakete"
+aushaengen
+trap - EXIT
+gnu=$(grep -oE '^(coreutils|findutils|grep|sed|gawk|diffutils|util-linux|which|tar|gzip|procps-ng|inetutils) ' "$ZIEL.pakete" | tr -d ' ' | tr '\n' ' ')
+meldung "fertig: $ZIEL – $(wc -l <"$ZIEL.pakete") Pakete, $(du -sh --exclude=srv "$ZIEL" | cut -f1) ohne Repo; GNU: ${gnu:-keine}"

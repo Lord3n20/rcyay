@@ -1,0 +1,23 @@
+# UsrsideOS (glibc): udev und tmpfiles von systemd ohne systemd als PID 1 (Artix-Vorbild).
+# Bei Init = busybox|runit|s6 bleibt das Arch-Paket systemd installiert – als Werkzeugkasten,
+# nicht als Init: systemd-udevd/udevadm (libinput, mesa, seatd brauchen die udev-Datenbank),
+# systemd-sysusers/-tmpfiles (laufen als alpm-Hooks bei jeder Installation). Dieses Paket
+# startet beim Booten über /etc/usrside/start.d (rc.start von usrside-dienste):
+#   00-tmpfiles.sh  systemd-tmpfiles --create --boot (Ordner in /run, /var …)
+#   10-udev.sh      systemd-udevd --daemon statt mdev, udevadm trigger + settle
+# rc.stop beendet udevd über killall5 wie jeden anderen Prozess. Unter systemd tun beide nichts.
+#   cd pkg/usrside-udev && makepkg
+pkgname=usrside-udev
+pkgver=2026.11.26
+pkgrel=1
+pkgdesc='UsrsideOS: start systemd-udevd and systemd-tmpfiles at boot under BusyBox init, runit or s6'
+arch=(any)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-or-later)
+depends=(systemd)
+source=(00-tmpfiles.sh 10-udev.sh)
+sha256sums=(SKIP SKIP)
+
+package() {
+	install -Dm644 00-tmpfiles.sh 10-udev.sh -t "$pkgdir/etc/usrside/start.d"
+}
