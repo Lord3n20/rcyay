@@ -129,7 +129,7 @@ trap abhaengen EXIT
 
 pakete_installieren() {
 	local pakete pm=rcyay
-	mkdir -p "$MNT/var/lib/pacman" "$MNT/srv/$REPONAME"
+	mkdir -p "$MNT/var/lib/pacman" "$MNT/var/cache/pacman/pkg" "$MNT/srv/$REPONAME"
 	# Repo ins Abbild (rcyay -Syu im Abbild nutzt file:///srv/usrside-VARIANTE)
 	cp -a "$REPO/." "$MNT/srv/$REPONAME/"
 	# Installation mit rcyay aus dem stage2-chroot (musl), Ziel als -r
@@ -137,7 +137,9 @@ pakete_installieren() {
 	einhaengen "$WURZEL" "$MNT" /mnt/abbild --bind
 	einhaengen "$WURZEL" "$REPO" /usrside/repo --bind
 	chroot "$WURZEL" rcyay -V >/dev/null 2>&1 || pm=pacman
-	pakete=${PAKETE:-$(chroot "$WURZEL" "$pm" -Sylq "$REPONAME" | sort -u | tr '\n' ' ')}
+	# -Sy getrennt: sonst landen Fortschrittsmeldungen in der Paketliste
+	chroot "$WURZEL" env LC_ALL=C "$pm" -Sy >/dev/null
+	pakete=${PAKETE:-$(chroot "$WURZEL" env LC_ALL=C "$pm" -Slq "$REPONAME" | sort -u | tr '\n' ' ')}
 	meldung "installiere: $pakete"
 	# shellcheck disable=SC2086
 	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild --cachedir /mnt/abbild/var/cache/pacman/pkg \
