@@ -11,11 +11,10 @@ license=(GPL-2.0-only)
 depends=(busybox runit s6-linux-init openssh dhcpcd)
 backup=(etc/inittab)
 install=usrside-dienste.install
-source=(dateien)
-sha256sums=(SKIP)
 
 package() {
-	cd dateien
+	# dateien/ liegt neben dem PKGBUILD (makepkg nimmt keine Ordner als source)
+	cd "$startdir/dateien"
 	install -Dm755 rc.start "$pkgdir/usr/lib/usrside/rc.start"
 	install -Dm755 rc.stop "$pkgdir/usr/lib/usrside/rc.stop"
 	install -dm755 "$pkgdir/etc/usrside/start.d" "$pkgdir/etc/modules-load.d"
