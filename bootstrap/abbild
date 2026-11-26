@@ -343,7 +343,7 @@ live() {
 	printf '# <file system> <dir> <type> <options> <dump> <pass>\n' >"$fstab"
 	rm -f "$AUS/$n.squashfs.neu"
 	mksquashfs "$RFS" "$AUS/$n.squashfs.neu" -comp zstd -Xcompression-level 19 -b 1M -noappend -quiet \
-		-mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH" -e boot/vmlinuz-usrkrnl
+		-e boot/vmlinuz-usrkrnl # Zeitstempel über SOURCE_DATE_EPOCH (lib.sh)
 	mv "$AUS/$n.squashfs.neu" "$AUS/$n.squashfs"
 	if [[ -n $alt ]]; then printf '%s\n' "$alt" >"$fstab"; else rm -f "$fstab"; fi
 	install -m644 "$KBAU/vmlinuz-live" "$AUS/$n.vmlinuz"
