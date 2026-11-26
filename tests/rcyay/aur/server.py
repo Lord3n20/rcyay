@@ -5,6 +5,7 @@ Bedient aus einem Ordner PKGS/<pkgbase>/{PKGBUILD,.SRCINFO,…}:
   /rpc/v5/info?arg[]=…            /rpc/v5/search/<term>?by=name|name-desc|provides|depends|makedepends
   /cgit/aur.git/snapshot/<base>.tar.gz      /cgit/aur.git/plain/<datei>?h=<base>
   /gitlab/<proj>/-/archive/main/<proj>-main.tar.gz   /gitlab/<proj>/-/raw/main/<datei>  (aus --repo-dir)
+  /pks/lookup?op=get&search=0x<FPR>          HKP-Schlüsselserver (aus --keys: <FPR>.asc)
 Der Ordner wird bei jeder Anfrage neu gelesen (Tests tauschen Versionen aus).
 Jede Anfrage wird in --log protokolliert.
 """
@@ -155,6 +156,17 @@ class H(BaseHTTPRequestHandler):
             if "/" in base or ".." in f or not os.path.isfile(p):
                 return self.send(404, "not found", "text/plain")
             return self.send(200, open(p, "rb").read(), "text/plain")
+        if path == "/pks/lookup" and ARGS.keys:
+            # HKP (draft-shaw-openpgp-hkp): gpg --keyserver hkp://127.0.0.1:PORT --recv-keys FPR
+            want = q.get("search", [""])[0].upper()
+            if want.startswith("0X"):
+                want = want[2:]
+            if q.get("op", [""])[0] == "get" and want and want.isalnum():
+                for f in os.listdir(ARGS.keys):
+                    if f.endswith(".asc") and f[:-4].upper().endswith(want):
+                        return self.send(200, open(os.path.join(ARGS.keys, f), "rb").read(),
+                                         "application/pgp-keys")
+            return self.send(404, "No results found", "text/plain")
         if path.startswith("/gitlab/") and ARGS.repo_dir:
             parts = path.split("/")
             # /gitlab/<proj>/-/archive/main/<proj>-main.tar.gz  oder  /gitlab/<proj>/-/raw/main/<datei>
@@ -180,6 +192,7 @@ def main():
     ap.add_argument("--pkgs", required=True)
     ap.add_argument("--repo-dir")
     ap.add_argument("--log")
+    ap.add_argument("--keys")
     ap.add_argument("--fail-rpc", action="store_true")
     ARGS = ap.parse_args()
     srv = ThreadingHTTPServer(("127.0.0.1", ARGS.port), H)

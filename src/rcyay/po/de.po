@@ -783,3 +783,51 @@ msgstr "kein pkgname"
 #, c-format
 msgid "missing pkgver or pkgrel"
 msgstr "pkgver oder pkgrel fehlt"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "%s: ignoring invalid validpgpkeys entry '%s'\n"
+msgstr "%s: ungültiger validpgpkeys-Eintrag „%s“ wird ignoriert\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "gpg not found - cannot check validpgpkeys\n"
+msgstr "gpg nicht gefunden – validpgpkeys kann nicht geprüft werden\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "PGP keys need importing:\n"
+msgstr "PGP-Schlüssel müssen importiert werden:\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid " -> %.*s, required by: %s\n"
+msgstr " -> %.*s, benötigt von: %s\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "PGPFetch is off - makepkg will fail if the signatures cannot be verified\n"
+msgstr "PGPFetch ist aus – makepkg scheitert, wenn die Signaturen nicht geprüft werden können\n"
+
+#: src/rcyay/build.c
+msgid "Import?"
+msgstr "Importieren?"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "keys not imported - makepkg will fail if the signatures cannot be verified\n"
+msgstr "Schlüssel nicht importiert – makepkg scheitert, wenn die Signaturen nicht geprüft werden können\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "Importing keys with gpg...\n"
+msgstr "Importiere Schlüssel mit gpg...\n"
+
+#: src/rcyay/build.c
+#, c-format
+msgid "problem importing keys\n"
+msgstr "Problem beim Importieren der Schlüssel\n"
+
+#: src/rcyay/extra.c
+msgid "    --pgpfetch / --nopgpfetch  import missing validpgpkeys with gpg (default: yes)\n"
+msgstr "    --pgpfetch / --nopgpfetch  fehlende validpgpkeys mit gpg importieren (Standard: ja)\n"

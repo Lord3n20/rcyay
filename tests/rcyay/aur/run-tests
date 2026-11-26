@@ -32,6 +32,29 @@ cp -r "$HIER/pkgs" "$W/aur"; cp -r "$HIER/repo" "$W/repo-src"; cp -r "$HIER/pkgs
 mkdir -p "$W/repo"
 chown -R nobody: "$W/aur" "$W/aur-v2" "$W/repo-src" "$W/repo"
 srcinfo() { runuser -u nobody -- bash -c "cd '$1' && makepkg --printsrcinfo > .SRCINFO"; }
+# rc-pgp: signierte Quelle, Schlüssel nur auf dem Mock-Schlüsselserver (validpgpkeys)
+mkdir -p "$W/keys" "$W/aur/rc-pgp"
+export GNUPGHOME="$W/gpg-signer"; mkdir -m 700 "$GNUPGHOME"
+gpg --batch --quiet --passphrase '' --quick-gen-key 'rcyay Test <rcyay@test.invalid>' ed25519 sign never 2>/dev/null || { echo "Bail out! gpg-Schlüssel"; exit 2; }
+FPR=$(gpg --with-colons --list-keys 2>/dev/null | awk -F: '/^fpr:/ {print $10; exit}')
+gpg --armor --export "$FPR" > "$W/keys/$FPR.asc" 2>/dev/null
+echo "rcyay signiert" > "$W/aur/rc-pgp/daten.txt"
+gpg --batch --quiet --detach-sign "$W/aur/rc-pgp/daten.txt" 2>/dev/null
+unset GNUPGHOME
+chown -R nobody: "$W/aur/rc-pgp"
+cat > "$W/aur/rc-pgp/PKGBUILD" <<P
+pkgname=rc-pgp
+pkgver=1.0
+pkgrel=1
+arch=(any)
+license=(MIT)
+pkgdesc="rcyay Testpaket mit PGP-Signatur"
+source=(daten.txt daten.txt.sig)
+sha256sums=(SKIP SKIP)
+validpgpkeys=($FPR)
+package() { install -Dm644 "\$srcdir/daten.txt" "\$pkgdir/usr/share/rcyay-test/rc-pgp"; }
+P
+chown nobody: "$W/aur/rc-pgp/PKGBUILD"
 for d in "$W"/aur/* "$W"/aur-v2/* "$W"/repo-src/*; do srcinfo "$d" || { echo "Bail out! SRCINFO $d"; exit 2; }; done
 for d in "$W"/repo-src/*; do
   runuser -u nobody -- bash -c "cd '$d' && PKGDEST='$W/repo' makepkg -f >/dev/null 2>&1" || { echo "Bail out! Repo-Paket $d"; exit 2; }
@@ -44,10 +67,11 @@ cat > "$W/rcyay.conf" <<C
 AURURL = http://127.0.0.1:$PORT
 RepoGitURL = http://127.0.0.1:$PORT/gitlab
 BuildDir = $W/bau-root
+PGPKeyserver = hkp://127.0.0.1:$PORT
 C
 grep -v BuildDir "$W/rcyay.conf" > "$W/rcyay-nutzer.conf"
 chmod 644 "$W"/*.conf
-python3 "$HIER/server.py" --port "$PORT" --pkgs "$W/aur" --repo-dir "$W/repo-src" --log "$W/server.log" >"$W/server.out" 2>&1 &
+python3 "$HIER/server.py" --port "$PORT" --pkgs "$W/aur" --repo-dir "$W/repo-src" --log "$W/server.log" --keys "$W/keys" >"$W/server.out" 2>&1 &
 SRV=$!
 trap 'kill $SRV 2>/dev/null; aufraeumen' EXIT
 for _ in $(seq 50); do grep -q bereit "$W/server.out" 2>/dev/null && break; sleep 0.1; done
@@ -157,6 +181,29 @@ R -G --repo rc-hello; r=$?; check "-G --repo für AUR-Paket -> Fehler" [ $r != 0
 # ---------- interaktive Suche ----------
 { echo 1; yes y; } | R rc-hello; r=$?
 check "rcyay WORT: Auswahl 1 installiert" bash -c "[ $r = 0 ] && grep -q 'aur/rc-hello' '$W/out'"
+
+# ---------- PGP-Schlüssel (validpgpkeys) ----------
+BAUHOME=$(getent passwd rcyay-bau | cut -d: -f6)
+gpgbau() { runuser -u rcyay-bau -- env HOME="$BAUHOME" gpg --batch "$@"; }
+schluessel_weg() { gpgbau --yes --delete-keys "$FPR" >/dev/null 2>&1; true; }
+schluessel_weg
+R -S --noconfirm --nopgpfetch rc-pgp; r=$?
+check "--nopgpfetch: fehlender Schlüssel -> Bau scheitert" [ $r != 0 ]
+check "fehlender Schlüssel wird mit Paket angezeigt" has "$FPR, required by: rc-pgp"
+check "--nopgpfetch: kein Import" bash -c "! grep -q 'pks/lookup' '$W/server.log'"
+printf 'y\ny\nn\n' | R -S rc-pgp; r=$?
+check "Import abgelehnt -> Bau scheitert" bash -c "[ $r != 0 ] && grep -q 'Import?' '$W/out'"
+R -S --noconfirm rc-pgp; r=$?
+check "--noconfirm: Schlüssel automatisch importiert, Bau ok" [ $r = 0 ]
+check "rc-pgp installiert" installed rc-pgp
+check "Schlüssel im Schlüsselbund von rcyay-bau" bash -c "runuser -u rcyay-bau -- env HOME=$BAUHOME gpg --batch --list-keys $FPR >/dev/null 2>&1"
+check "Schlüssel kam vom Schlüsselserver" grep -q "pks/lookup.*$FPR" "$W/server.log"
+R -S --noconfirm rc-pgp; r=$?
+check "Schlüssel vorhanden -> keine Nachfrage" bash -c "[ $r = 0 ] && ! grep -q 'need importing' '$W/out'"
+schluessel_weg
+yes y | R -S rc-pgp; r=$?
+check "mit Rückfrage (ja) importiert und gebaut" bash -c "[ $r = 0 ] && grep -q 'Import?' '$W/out'"
+runuser -u rcyay-bau -- env HOME="$BAUHOME" gpgconf --kill all 2>/dev/null
 
 # ---------- als normaler Nutzer (sudo) ----------
 aufraeumen

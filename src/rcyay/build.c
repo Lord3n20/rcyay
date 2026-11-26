@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <dirent.h>
 #include <unistd.h>
@@ -492,6 +493,177 @@ static void show_plan(aur_plan_t *plan)
 	printf("\n");
 }
 
+/* ---------- PGP-Schlüssel (validpgpkeys) ---------- */
+
+/* validpgpkeys aus der .SRCINFO des frischen Snapshots (gehört zu pkgbase) */
+static alpm_list_t *srcinfo_pgpkeys(job_t *j, alpm_list_t *keys)
+{
+	char *p = path2(j->neu, ".SRCINFO", NULL), line[1024];
+	FILE *f = p ? fopen(p, "r") : NULL;
+	free(p);
+	if(!f) {
+		return keys;
+	}
+	while(fgets(line, sizeof(line), f)) {
+		char *k = line, *v, *e;
+		while(*k == ' ' || *k == '\t') k++;
+		if(strncmp(k, "validpgpkeys", 12) != 0) continue;
+		v = k + 12;
+		while(*v == ' ' || *v == '\t') v++;
+		if(*v != '=') continue;
+		v++;
+		while(*v == ' ' || *v == '\t') v++;
+		for(e = v + strlen(v); e > v && (e[-1] == '\n' || e[-1] == ' ' || e[-1] == '\t'); e--);
+		*e = '\0';
+		/* nur Hex-Zeichen erlauben (Fingerabdruck), Großschreibung wie gpg */
+		if(!*v || strspn(v, "0123456789abcdefABCDEF") != strlen(v)) {
+			if(*v) rc_warn(_("%s: ignoring invalid validpgpkeys entry '%s'\n"), j->pkgbase, v);
+			continue;
+		}
+		for(char *c = v; *c; c++) {
+			if(*c >= 'a' && *c <= 'f') *c -= 'a' - 'A';
+		}
+		/* Eintrag: "FPR PKGBASE" – der Schlüssel zuerst, für die Anzeige */
+		{
+			int dup = 0;
+			for(alpm_list_t *i = keys; i; i = i->next) {
+				const char *s = i->data;
+				size_t n = strlen(v);
+				if(strncmp(s, v, n) == 0 && s[n] == ' ') {
+					dup = 1;
+					break;
+				}
+			}
+			if(!dup) {
+				char *ent = NULL;
+				if(asprintf(&ent, "%s %s", v, j->pkgbase) >= 0) {
+					keys = alpm_list_add(keys, ent);
+				}
+			}
+		}
+	}
+	fclose(f);
+	return keys;
+}
+
+/* 1, wenn der Schlüssel (Fingerabdruck oder langes Kürzel) im Schlüsselbund des
+ * Bau-Nutzers steht; list = Ausgabe von gpg --with-colons --list-keys */
+static int key_known(const char *list, const char *key, size_t klen)
+{
+	const char *l = list;
+	while(l && *l) {
+		const char *nl = strchr(l, '\n');
+		size_t n = nl ? (size_t)(nl - l) : strlen(l);
+		if(n > 4 && (strncmp(l, "fpr:", 4) == 0 || strncmp(l, "pub:", 4) == 0 || strncmp(l, "sub:", 4) == 0)) {
+			/* fpr:::::::::FPR:  bzw. pub:u:255:22:KEYID:… */
+			int field = strncmp(l, "fpr:", 4) == 0 ? 9 : 4;
+			const char *c = l;
+			for(int k = 0; k < field && c < l + n; k++) {
+				c = memchr(c, ':', (size_t)(l + n - c));
+				if(!c) break;
+				c++;
+			}
+			if(c && c < l + n) {
+				const char *ce = memchr(c, ':', (size_t)(l + n - c));
+				size_t fl = ce ? (size_t)(ce - c) : (size_t)(l + n - c);
+				if(fl >= klen && strncasecmp(c + fl - klen, key, klen) == 0) {
+					return 1;
+				}
+			}
+		}
+		l = nl ? nl + 1 : NULL;
+	}
+	return 0;
+}
+
+/* Fehlende validpgpkeys anzeigen und (nach Rückfrage) importieren.
+ * 0 = weiter bauen, -1 = abbrechen */
+static int check_pgp_keys(aur_plan_t *plan)
+{
+	alpm_list_t *keys = NULL, *missing = NULL;
+	char *list = NULL;
+	int ret = 0;
+
+	for(alpm_list_t *i = plan->bases; i; i = i->next) {
+		job_t *j = job_for(((aur_base_t *)i->data)->pkgbase);
+		if(j) {
+			keys = srcinfo_pgpkeys(j, keys);
+		}
+	}
+	if(!keys) {
+		return 0;
+	}
+	if(!rc_have_program("gpg")) {
+		rc_warn(_("gpg not found - cannot check validpgpkeys\n"));
+		FREELIST(keys);
+		return 0;
+	}
+	{
+		const char *argv[] = { "gpg", "--batch", "--with-colons", "--list-keys", NULL };
+		rc_run(argv, NULL, build_uid, build_gid, build_home, &list);
+	}
+	for(alpm_list_t *i = keys; i; i = i->next) {
+		const char *ent = i->data, *sp = strchr(ent, ' ');
+		if(!key_known(list, ent, (size_t)(sp - ent))) {
+			missing = alpm_list_add(missing, strdup(ent));
+		}
+	}
+	free(list);
+	FREELIST(keys);
+	if(!missing) {
+		return 0;
+	}
+
+	rc_msg(_("PGP keys need importing:\n"));
+	for(alpm_list_t *i = missing; i; i = i->next) {
+		const char *ent = i->data, *sp = strchr(ent, ' ');
+		printf(_(" -> %.*s, required by: %s\n"), (int)(sp - ent), ent, sp + 1);
+	}
+	if(!R.pgpfetch) {
+		rc_warn(_("PGPFetch is off - makepkg will fail if the signatures cannot be verified\n"));
+		goto done;
+	}
+	if(!rc_confirm(1, _("Import?"))) {
+		rc_warn(_("keys not imported - makepkg will fail if the signatures cannot be verified\n"));
+		goto done;
+	}
+	{
+		size_t n = alpm_list_count(missing), k = 0;
+		const char **argv = calloc(n + 6, sizeof(char *));
+		alpm_list_t *fprs = NULL;
+		if(!argv) {
+			ret = -1;
+			goto done;
+		}
+		argv[k++] = "gpg";
+		argv[k++] = "--batch";
+		if(R.keyserver && *R.keyserver) {
+			argv[k++] = "--keyserver";
+			argv[k++] = R.keyserver;
+		}
+		argv[k++] = "--recv-keys";
+		for(alpm_list_t *i = missing; i; i = i->next) {
+			const char *ent = i->data, *sp = strchr(ent, ' ');
+			char *f = strndup(ent, (size_t)(sp - ent));
+			fprs = alpm_list_add(fprs, f);
+			argv[k++] = f;
+		}
+		argv[k] = NULL;
+		rc_msg(_("Importing keys with gpg...\n"));
+		if(rc_run(argv, NULL, build_uid, build_gid, build_home, NULL) != 0) {
+			rc_err(_("problem importing keys\n"));
+			ret = -1;
+		}
+		free(argv);
+		FREELIST(fprs);
+	}
+done:
+	FREELIST(missing);
+	return ret;
+}
+
+/* ---------- Installation ---------- */
+
 int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *devel)
 {
 	aur_resolver_t res = { 0 };
@@ -589,6 +761,11 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 			ret = 1;
 			goto done;
 		}
+	}
+
+	if(check_pgp_keys(plan) != 0) {
+		ret = 1;
+		goto done;
 	}
 
 	/* vorher installierte Pakete merken (für Installationsgrund/Aufräumen) */

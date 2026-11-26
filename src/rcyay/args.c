@@ -127,6 +127,8 @@ static int parse_long(int argc, char *argv[], int i)
 		return 1;
 	}
 	if(strcmp(name, "nodiff") == 0) { R.nodiff = 1; return 1; }
+	if(strcmp(name, "pgpfetch") == 0) { R.cli_pgpfetch = 1; return 1; }
+	if(strcmp(name, "nopgpfetch") == 0) { R.cli_pgpfetch = 2; return 1; }
 	if(strcmp(name, "topdown") == 0) { R.bottomup = 0; return 1; }
 	if(strcmp(name, "bottomup") == 0) { R.bottomup = 1; return 1; }
 	if(strcmp(name, "nocheck") == 0) { R.nocheck = 1; return 1; }

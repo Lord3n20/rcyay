@@ -95,7 +95,12 @@ static int conf_cb(const char *file, int line, const char *section,
 	else if(!strcmp(key, "Init")) set(&R.init, value);
 	else if(!strcmp(key, "Variant")) set(&R.variant, value);
 	else if(!strcmp(key, "SortBy")) set(&R.conf_sortby, value);
-	else if(!strcmp(key, "RemoveMake")) {
+	else if(!strcmp(key, "PGPKeyserver")) set(&R.keyserver, value);
+	else if(!strcmp(key, "PGPFetch")) {
+		if(parse_bool(value, &R.pgpfetch) != 0) {
+			rc_warn(_("%s:%d: %s: expected yes or no\n"), file, line, key);
+		}
+	} else if(!strcmp(key, "RemoveMake")) {
 		if(parse_bool(value, removemake) != 0) {
 			rc_warn(_("%s:%d: %s: expected yes or no\n"), file, line, key);
 		}
@@ -110,6 +115,8 @@ int rc_readconf(void)
 	const char *path = R.rcyayconf ? R.rcyayconf : getenv("RCYAY_CONF");
 	int removemake = 1;
 	int explicit = path != NULL;
+
+	R.pgpfetch = 1;
 
 	if(!path) {
 		path = RCYAY_CONF;
@@ -131,6 +138,7 @@ int rc_readconf(void)
 	if(!R.sortby) {
 		R.sortby = strdup(R.conf_sortby ? R.conf_sortby : "votes");
 	}
+	if(R.cli_pgpfetch) R.pgpfetch = R.cli_pgpfetch == 1;
 	if(R.cli_aururl) set(&R.aururl, R.cli_aururl);
 	if(R.cli_builddir) set(&R.builddir, R.cli_builddir);
 	if(!R.aururl) R.aururl = strdup("https://aur.archlinux.org");

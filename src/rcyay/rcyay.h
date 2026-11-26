@@ -67,7 +67,10 @@ typedef struct {
 	char *sudo;
 	char *init;
 	char *variant;
+	int pgpfetch;               /* fehlende validpgpkeys importieren (PGPFetch, Standard ja) */
+	char *keyserver;          /* PGPKeyserver, NULL = gpg-Standard (wie yay) */
 	char *cli_aururl, *cli_builddir;
+	int cli_pgpfetch;         /* 0 = aus rcyay.conf, 1 = --pgpfetch, 2 = --nopgpfetch */
 
 	/* Laufzeit */
 	aur_ctx_t *ctx;
