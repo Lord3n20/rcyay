@@ -15,7 +15,7 @@ package_libxml2() {
 	optdepends=()
 	provides=(libxml2.so)
 	meson install -C build --destdir "$pkgdir"
-	install -Dm644 libxml2/libxml.m4 -t "$pkgdir/usr/share/aclocal"
+	# libxml.m4 liegt nur im git-Baum, nicht im Release-Tarball
 	rm -rf "$pkgdir/usr/share/doc"
 	install -Dm644 libxml2/Copyright -t "$pkgdir/usr/share/licenses/$pkgname"
 }
