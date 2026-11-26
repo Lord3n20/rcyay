@@ -19,6 +19,9 @@
  *    busybox Zeile ::respawn:ORDNER/run im Block "rcyay-dienste" von /etc/inittab
  *    Einmal-Dienste (Type=oneshot) bei allen drei: /etc/usrside/start.d/rcyay-NAME.sh
  *  Overlays: /etc/rcyay/overlay/dienste/NAME/ vor /usr/share/rcyay/overlay/dienste/NAME/
+ *  Buchführung: /etc/rcyay/dienste.erzeugt listet alles, was rcyay selbst angelegt hat (Links,
+ *  Ordner, start.d-Dateien, inittab, dienste.an). Beim Init-Wechsel wird genau das entfernt –
+ *  Dateien von Paketen (z. B. Links von usrside-dienste) bleiben; bei systemd bleibt nichts übrig.
  */
 #define _GNU_SOURCE
 #include <stdio.h>
@@ -50,10 +53,15 @@
 #define INITTAB     "/etc/inittab"
 #define TAB_BEGIN   "# rcyay-dienste: begin (generated, do not edit inside)"
 #define TAB_END     "# rcyay-dienste: end"
+#define MF_FILE     "/etc/rcyay/dienste.erzeugt"
+#define RC_DIR      "/etc/rcyay"
 
 static const char *root = "";
 static int live;        /* root ist "/" → laufendes Init benachrichtigen */
 static rc_init_t init;
+static alpm_list_t *mf;   /* erzeugte Pfade (im Zielsystem, sortiert) */
+static int mf_dirty;
+static const char *in_target(const char *p);
 
 static char *P(const char *fmt_, ...) __attribute__((format(printf, 1, 2)));
 static char *P(const char *fmt_, ...)
@@ -155,6 +163,110 @@ static char *unit_name(const char *arg)
 	return n;
 }
 
+/* ---------- Buchführung über Erzeugtes ---------- */
+
+static void mf_load(void)
+{
+	char *p = P(MF_FILE), *t = p ? read_file(p) : NULL, *save = NULL;
+	free(p);
+	if(!t) return;
+	for(char *s = strtok_r(t, "\n", &save); s; s = strtok_r(NULL, "\n", &save)) {
+		if(*s == '/' && !alpm_list_find_str(mf, s)) {
+			mf = alpm_list_add_sorted(mf, strdup(s), (alpm_list_fn_cmp)strcmp);
+		}
+	}
+	free(t);
+}
+
+static int mf_has(const char *full)
+{
+	return full && alpm_list_find_str(mf, in_target(full)) != NULL;
+}
+
+static void mf_add(const char *full)
+{
+	if(!full || mf_has(full)) return;
+	mf = alpm_list_add_sorted(mf, strdup(in_target(full)), (alpm_list_fn_cmp)strcmp);
+	mf_dirty = 1;
+}
+
+static void mf_del(const char *full)
+{
+	char *v = NULL;
+	if(!full) return;
+	mf = alpm_list_remove_str(mf, in_target(full), &v);
+	if(v) {
+		free(v);
+		mf_dirty = 1;
+	}
+}
+
+static int mf_save(void)
+{
+	char *p, *d, *buf;
+	size_t n = 128;
+	int r;
+	if(!mf_dirty) return 0;
+	mf_dirty = 0;
+	p = P(MF_FILE);
+	if(!p) return -1;
+	if(!mf) {
+		r = unlink(p) == 0 || errno == ENOENT ? 0 : -1;
+		free(p);
+		return r;
+	}
+	d = P(RC_DIR);
+	if(d && !exists(d)) {
+		rc_mkdir_p(d, 0755);
+		if(!alpm_list_find_str(mf, RC_DIR)) {
+			mf = alpm_list_add_sorted(mf, strdup(RC_DIR), (alpm_list_fn_cmp)strcmp);
+		}
+	}
+	free(d);
+	for(alpm_list_t *i = mf; i; i = i->next) n += strlen(i->data) + 1;
+	buf = malloc(n);
+	if(!buf) {
+		free(p);
+		return -1;
+	}
+	strcpy(buf, "# rcyay-dienste: created by rcyay, removed again when the init changes\n");
+	for(alpm_list_t *i = mf; i; i = i->next) {
+		strcat(buf, i->data);
+		strcat(buf, "\n");
+	}
+	r = write_file(p, buf, 0644);
+	free(buf);
+	free(p);
+	return r;
+}
+
+/* mkdir -p, jeder neu angelegte Ordner wird gebucht */
+static int mkdir_rec(const char *full)
+{
+	char *d = strdup(full);
+	size_t start = strlen(root);
+	int r = 0;
+	if(!d) return -1;
+	for(char *p = d + start + 1; ; p++) {
+		if(*p == '/' || *p == '\0') {
+			char c = *p;
+			*p = '\0';
+			if(!exists(d)) {
+				if(mkdir(d, 0755) != 0 && errno != EEXIST) {
+					r = -1;
+					break;
+				}
+				mf_add(d);
+			}
+			*p = c;
+			if(!c) break;
+		}
+	}
+	if(r != 0) rc_err("%s: %s\n", d, strerror(errno));
+	free(d);
+	return r;
+}
+
 /* ---------- Liste der eingeschalteten Dienste ---------- */
 
 static alpm_list_t *an_read(void)
@@ -192,7 +304,7 @@ static int an_write(alpm_list_t *l)
 		strcat(buf, i->data);
 		strcat(buf, "\n");
 	}
-	rc_mkdir_p(d, 0755);
+	mkdir_rec(d);
 	r = write_file(p, buf, 0644);
 	free(buf);
 	free(p);
@@ -259,6 +371,7 @@ static int inittab_edit(const char *name, const char *dir, int add)
 	int inblock = 0, changed = 0, referenced = 0;
 	char *want = NULL;
 
+	int created = 0;
 	if(!p) return -1;
 	t = read_file(p);
 	if(!t) {
@@ -267,6 +380,7 @@ static int inittab_edit(const char *name, const char *dir, int add)
 			return 0;
 		}
 		t = strdup("");
+		created = 1;
 	}
 	if(dir && asprintf(&want, "::respawn:%s/run", in_target(dir)) < 0) want = NULL;
 	/* Zeilen außerhalb des Blocks bleiben, Block wird neu geschrieben */
@@ -311,7 +425,14 @@ static int inittab_edit(const char *name, const char *dir, int add)
 			strcat(out, TAB_END "\n");
 		}
 		changed = strcmp(out, t) != 0;
-		if(changed && write_file(p, out, 0644) != 0) changed = -1;
+		if(changed && !*out && mf_has(p)) {
+			/* inittab hat rcyay selbst angelegt und sie ist wieder leer */
+			if(unlink(p) == 0) mf_del(p);
+		} else if(changed && write_file(p, out, 0644) != 0) {
+			changed = -1;
+		} else if(changed && created) {
+			mf_add(p);
+		}
 	}
 	free(out);
 	free(line);
@@ -348,10 +469,12 @@ static void run_quiet(const char *a0, const char *a1, const char *a2, const char
 	}
 }
 
-static int s6_copy(const char *dir, const char *dest, int down)
+static int s6_copy(const char *dir, const char *dest, int down, int record)
 {
 	const char *files[] = { "run", "finish", NULL };
-	if(rc_mkdir_p(dest, 0755) != 0) {
+	if(record) {
+		if(mkdir_rec(dest) != 0) return -1;
+	} else if(rc_mkdir_p(dest, 0755) != 0) {
 		rc_err("%s: %s\n", dest, strerror(errno));
 		return -1;
 	}
@@ -395,7 +518,9 @@ static int activate(const char *name, int quiet)
 			rc_warn(_("%s: %s is missing - oneshot service %s is not run at boot\n"), name, START_D, name);
 		} else if(asprintf(&txt, "# rcyay-dienste: oneshot %s (sourced by rc.start)\n%s/start\n",
 					name, in_target(dir)) >= 0) {
+			int neu = !exists(f);
 			ret = write_file(f, txt, 0644);
+			if(ret == 0 && neu) mf_add(f);
 		}
 		free(txt);
 		free(d);
@@ -412,13 +537,15 @@ static int activate(const char *name, int quiet)
 			if(n >= 0 && !strcmp(cur, in_target(dir))) {
 				break;
 			}
-			rc_mkdir_p(d, 0755);
+			mkdir_rec(d);
 			if(n >= 0) unlink(l);
 			if(exists(l)) {
 				rc_warn(_("%s: %s exists and is not a link - left alone\n"), name, l);
 			} else if(symlink(in_target(dir), l) != 0) {
 				rc_err("%s: %s\n", l, strerror(errno));
 				ret = -1;
+			} else {
+				mf_add(l);
 			}
 			free(d);
 			free(l);
@@ -428,7 +555,7 @@ static int activate(const char *name, int quiet)
 			char *img = P(S6_IMAGE "/%s", name);
 			char *base = P(S6_IMAGE);
 			if(exists(base) || exists(img)) {
-				ret = s6_copy(dir, img, 1);
+				ret = s6_copy(dir, img, 1, 1);
 			} else {
 				rc_warn(_("%s: %s is missing (s6-linux-init not set up) - only enabled for this boot\n"),
 						name, S6_IMAGE);
@@ -437,7 +564,7 @@ static int activate(const char *name, int quiet)
 				char *ld = NULL;
 				if(asprintf(&ld, S6_LIVE "/%s", name) >= 0) {
 					int neu = !exists(ld);
-					s6_copy(dir, ld, 0);
+					s6_copy(dir, ld, 0, 0);
 					if(neu) run_quiet("s6-svscanctl", "-a", S6_LIVE, NULL);
 					else run_quiet("s6-svc", "-u", ld, NULL);
 				}
@@ -460,23 +587,45 @@ static int activate(const char *name, int quiet)
 	return ret;
 }
 
-static int deactivate(const char *name, rc_init_t which)
+/* generiert = Kopie/Übersetzung von rcyay (Kopfzeile „rcyay-dienste:“) */
+static int generated_run(const char *dir)
+{
+	char *r = NULL, *t;
+	int g;
+	if(asprintf(&r, "%s/run", dir) < 0) return 0;
+	t = read_file(r);
+	g = t && strstr(t, "rcyay-dienste:") != NULL;
+	free(t);
+	free(r);
+	return g;
+}
+
+/* force = 1: ausdrücklich ausschalten (auch Links/Kopien von Paketen);
+ * force = 0: Init-Wechsel, nur was rcyay selbst angelegt hat */
+static int deactivate(const char *name, rc_init_t which, int force)
 {
 	char *f = P(START_D "/rcyay-%s.sh", name);
-	if(f) unlink(f);
+	if(f && unlink(f) == 0) mf_del(f);
 	free(f);
 	switch(which) {
 		case RC_INIT_RUNIT: {
 			char *l = P(RUNIT_DIR "/%s", name);
 			char cur[4096];
 			ssize_t n = l ? readlink(l, cur, sizeof(cur) - 1) : -1;
-			if(n >= 0) unlink(l);  /* nur Links (die wir oder ein Paket setzten) */
+			if(n >= 0) cur[n] = '\0';
+			if(n >= 0 && (force || mf_has(l) || !strncmp(cur, GEN_DIR "/", strlen(GEN_DIR) + 1))) {
+				unlink(l);
+				mf_del(l);
+			}
 			free(l);
 			break;
 		}
 		case RC_INIT_S6: {
 			char *img = P(S6_IMAGE "/%s", name);
-			if(img && exists(img)) rc_rm_rf(img);
+			if(img && exists(img) && (force || mf_has(img) || generated_run(img))) {
+				rc_rm_rf(img);
+				mf_del(img);
+			}
 			free(img);
 			if(live) {
 				char *ld = NULL;
@@ -545,10 +694,11 @@ static void gen_clear(const char *name)
 {
 	char *d = P(GEN_DIR "/%s", name);
 	if(d && exists(d)) rc_rm_rf(d);
+	mf_del(d);
 	free(d);
 }
 
-/* 0 = bereit, 1 = übersprungen, -1 = Fehler/nicht übersetzbar */
+/* 0 = bereit, 1 = übersprungen, -1 = nicht übersetzbar (Warnung), -2 = Fehler beim Schreiben */
 static int provide(const char *name, int verbose)
 {
 	char *ovl, *unit, *text, *gdir, *err = NULL, *why = NULL;
@@ -570,7 +720,11 @@ static int provide(const char *name, int verbose)
 	if((ovl = find_overlay(name))) {
 		const char *files[] = { "run", "finish", "start", NULL };
 		gen_clear(name);
-		rc_mkdir_p(gdir, 0755);
+		if(mkdir_rec(gdir) != 0) {
+			free(ovl);
+			free(gdir);
+			return -2;
+		}
 		for(int k = 0; files[k]; k++) {
 			char *f = NULL, *t = NULL;
 			if(asprintf(&f, "%s/%s", ovl, files[k]) >= 0 && asprintf(&t, "%s/%s", gdir, files[k]) >= 0 &&
@@ -605,14 +759,14 @@ static int provide(const char *name, int verbose)
 	if(r == 0) {
 		char *f = NULL;
 		gen_clear(name);
-		rc_mkdir_p(gdir, 0755);
-		if(out.run && asprintf(&f, "%s/run", gdir) >= 0) write_file(f, out.run, 0755);
+		if(mkdir_rec(gdir) != 0) r = -2;
+		if(out.run && asprintf(&f, "%s/run", gdir) >= 0 && write_file(f, out.run, 0755) != 0) r = -2;
 		free(f);
 		f = NULL;
-		if(out.finish && asprintf(&f, "%s/finish", gdir) >= 0) write_file(f, out.finish, 0755);
+		if(out.finish && asprintf(&f, "%s/finish", gdir) >= 0 && write_file(f, out.finish, 0755) != 0) r = -2;
 		free(f);
 		f = NULL;
-		if(out.start && asprintf(&f, "%s/start", gdir) >= 0) write_file(f, out.start, 0755);
+		if(out.start && asprintf(&f, "%s/start", gdir) >= 0 && write_file(f, out.start, 0755) != 0) r = -2;
 		free(f);
 		if(verbose) {
 			rc_msg(_("%s: translated for %s (%s)\n"), name, rc_init_name(init),
@@ -720,17 +874,27 @@ static int cmd_update(alpm_list_t *names, int verbose)
 	for(alpm_list_t *i = names; i; i = i->next) {
 		const char *n = i->data;
 		int r = provide(n, verbose);
-		if(r < 0) ret = 1;
+		if(r < -1) ret = 1;   /* nicht übersetzbar ist nur eine Warnung */
 		if(r == 0 && !alpm_list_find_str(an, n) && systemd_enabled(n)) {
 			an = alpm_list_add(an, strdup(n));
 			changed = 1;
 		}
 		if(alpm_list_find_str(an, n)) {
-			if(r == 0) activate(n, 0);
-			else deactivate(n, init);
+			if(r == 0) {
+				if(activate(n, 0) < 0) ret = 1;
+			} else {
+				deactivate(n, init, 1);
+			}
 		}
 	}
-	if(changed) an_write(an);
+	if(changed) {
+		/* nur aus dem systemd-Zustand übernommen → gehört zum Erzeugten */
+		char *a = P(AN_FILE);
+		int neu = a && !exists(a);
+		if(an_write(an) != 0) ret = 1;
+		else if(neu) mf_add(a);
+		free(a);
+	}
 	FREELIST(an);
 	return ret;
 }
@@ -740,7 +904,7 @@ static int cmd_remove(alpm_list_t *names)
 	alpm_list_t *an = an_read(), *keep = NULL;
 	for(alpm_list_t *i = names; i; i = i->next) {
 		const char *n = i->data;
-		deactivate(n, init);
+		deactivate(n, init, 1);
 		gen_clear(n);
 	}
 	for(alpm_list_t *i = an; i; i = i->next) {
@@ -774,7 +938,7 @@ static int cmd_enable(alpm_list_t *names, int on)
 			if(!alpm_list_find_str(an, n)) an = alpm_list_add(an, strdup(n));
 		} else {
 			alpm_list_t *keep = NULL;
-			deactivate(n, init);
+			deactivate(n, init, 1);
 			for(alpm_list_t *k = an; k; k = k->next) {
 				if(strcmp(k->data, n) != 0) keep = alpm_list_add(keep, strdup(k->data));
 			}
@@ -786,6 +950,12 @@ static int cmd_enable(alpm_list_t *names, int on)
 		rc_warn(_("Init is %s - use systemctl; recorded for other inits only\n"), rc_init_name(init));
 	}
 	if(an_write(an) != 0) ret = 1;
+	{
+		/* ausdrücklich gewählt → Einstellung des Nutzers, bleibt beim Wechsel zu systemd */
+		char *a = P(AN_FILE);
+		mf_del(a);
+		free(a);
+	}
 	FREELIST(an);
 	return ret;
 }
@@ -799,6 +969,43 @@ static int cmd_apply(void)
 	}
 	FREELIST(an);
 	return ret;
+}
+
+/* Init-Wechsel: alles Erzeugte entfernen; to_systemd = auch dienste.an und /etc/rcyay */
+static void clear_generated(int to_systemd)
+{
+	char *g = P(GEN_DIR), *a = P(AN_FILE), *rd = P(RC_DIR);
+	alpm_list_t *rev = alpm_list_reverse(mf);
+	if(g && exists(g)) rc_rm_rf(g);
+	mf_del(g);
+	for(alpm_list_t *i = rev; i; i = i->next) {
+		char *full = P("%s", (const char *)i->data);
+		struct stat st;
+		if(!full) continue;
+		if(!strcmp(full, rd) || (!to_systemd && !strcmp(full, a))) {
+			free(full);
+			continue;
+		}
+		if(lstat(full, &st) != 0) {
+			if(errno == ENOENT) mf_del(full);
+		} else if(S_ISDIR(st.st_mode)) {
+			/* leer = nur von uns; sonst liegen dort Dateien von Paketen → bleibt */
+			if(rmdir(full) == 0) mf_del(full);
+		} else if(unlink(full) == 0) {
+			mf_del(full);
+		}
+		free(full);
+	}
+	alpm_list_free(rev);
+	if(to_systemd && mf_has(rd) && alpm_list_count(mf) == 1) {
+		/* nur /etc/rcyay selbst ist noch gebucht: Buchführung weg, Ordner weg (falls leer) */
+		mf_del(rd);
+		mf_save();
+		rmdir(rd);
+	}
+	free(g);
+	free(a);
+	free(rd);
 }
 
 static int cmd_list(void)
@@ -883,7 +1090,15 @@ static int cmd_init(const char *value)
 	}
 	an = an_read();
 	if(alt != RC_INIT_NONE && alt != RC_INIT_SYSTEMD) {
-		for(alpm_list_t *i = an; i; i = i->next) deactivate(i->data, alt);
+		alpm_list_t *alle = all_names();
+		for(alpm_list_t *i = an; i; i = i->next) {
+			if(!alpm_list_find_str(alle, i->data)) alle = alpm_list_add(alle, strdup(i->data));
+		}
+		for(alpm_list_t *i = alle; i; i = i->next) deactivate(i->data, alt, 0);
+		FREELIST(alle);
+	}
+	if(neu != alt) {
+		clear_generated(neu == RC_INIT_SYSTEMD);
 	}
 	/* systemd-Zustand einmal übernehmen, wenn noch nichts eingeschaltet ist */
 	if(conf_set_init(value) != 0) {
@@ -903,11 +1118,11 @@ static int cmd_init(const char *value)
 	return ret;
 }
 
+static int dienste_cmd(const char *sub);
+
 int rc_dienste_main(void)
 {
-	alpm_list_t *names;
 	int ret;
-	const char *sub = R.svcmd;
 
 	if(R.rootdir && strcmp(R.rootdir, "/") != 0) {
 		static char rbuf[4096];
@@ -921,6 +1136,17 @@ int rc_dienste_main(void)
 		rc_err(_("rcyay.conf: invalid Init = %s (systemd, busybox, runit, s6)\n"), R.init);
 		return 1;
 	}
+	mf_load();
+	ret = dienste_cmd(R.svcmd);
+	if(mf_save() != 0) ret = 1;
+	FREELIST(mf);
+	return ret;
+}
+
+static int dienste_cmd(const char *sub)
+{
+	alpm_list_t *names;
+	int ret;
 
 	if(!strcmp(sub, "list")) {
 		return cmd_list();

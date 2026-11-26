@@ -34,7 +34,7 @@ X() { "$RCYAY" --root "$R" --rcyayconf "$R/etc/rcyay.conf" "$@" >"$W/out" 2>&1; 
 neu
 ln -s /usr/lib/systemd/system/sshd.service "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
 X --init runit; r=$?
-check "--init runit: Exit 1 wegen unübersetzbarer kaputt.service" [ $r = 1 ]
+check "--init runit: Exit 0 trotz unübersetzbarer kaputt.service (nur Warnung)" [ $r = 0 ]
 check "Init in rcyay.conf gesetzt (auskommentierte Zeile ersetzt)" grep -qx "Init = runit" "$R/etc/rcyay.conf"
 check "rcyay.conf: übrige Zeilen bleiben" grep -qx "BuildUser = rcyay-bau" "$R/etc/rcyay.conf"
 check "sshd übersetzt (run, ausführbar)" test -x "$R/etc/rcyay/dienste/sshd/run"
@@ -110,6 +110,38 @@ echo usr/lib/systemd/system/seatd.service | X --services update; r=$?
 check "Init systemd: Hook tut nichts" bash -c "[ $r = 0 ] && grep -q 'used directly' '$W/out'"
 X --init openrc; r=$?
 check "unbekanntes Init -> Fehler" [ $r != 0 ]
+
+# ---------- Init-Wechsel: nur Erzeugtes entfernen, Hin und zurück bitgleich ----------
+baum() { (cd "$R" && find . -path ./etc/rcyay.conf -prune -o -printf '%y %m %p -> %l\n' | sort; \
+  find . -type f ! -path ./etc/rcyay.conf -exec sha256sum {} + | sort -k2) > "$1"; }
+neu
+rm -rf "$R/etc/runit" "$R/etc/inittab"   # runit-Ordner und inittab legt dann rcyay selbst an
+ln -s /usr/lib/systemd/system/sshd.service "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
+baum "$W/b0"
+X --init runit; X --init s6; X --init busybox; X --init systemd; r=$?
+check "systemd→runit→s6→busybox→systemd: Exit 0" [ $r = 0 ]
+baum "$W/b1"
+check "zurück bei systemd: Baum bitgleich (nichts Erzeugtes übrig)" bash -c "diff '$W/b0' '$W/b1' > '$W/out'"
+check "kein /etc/rcyay, kein runsvdir, keine inittab übrig" bash -c "[ ! -e '$R/etc/rcyay' ] && [ ! -e '$R/etc/runit' ] && [ ! -e '$R/etc/inittab' ]"
+neu
+mkdir -p "$R/etc/sv/dhcpcd"; printf '#!/bin/sh\nexec dhcpcd -B\n' > "$R/etc/sv/dhcpcd/run"; chmod 755 "$R/etc/sv/dhcpcd/run"
+ln -s /etc/sv/dhcpcd "$R/etc/runit/runsvdir/default/dhcpcd"            # Link eines Pakets (usrside-dienste)
+mkdir -p "$R/etc/s6-linux-init/current/run-image/service/dhcpcd"; cp "$R/etc/sv/dhcpcd/run" "$R/etc/s6-linux-init/current/run-image/service/dhcpcd/"
+ln -s /usr/lib/systemd/system/sshd.service "$R/etc/systemd/system/multi-user.target.wants/sshd.service"
+X --init runit; X --enable seatd
+baum "$W/r0"
+X --init s6
+check "runit→s6: Paket-Link default/dhcpcd bleibt, erzeugte Links weg" bash -c "[ -L '$R/etc/runit/runsvdir/default/dhcpcd' ] && [ ! -e '$R/etc/runit/runsvdir/default/sshd' ] && [ ! -e '$R/etc/runit/runsvdir/default/seatd' ]"
+check "runit→s6: keine Übersetzungen für runit übrig, s6 hat sshd+seatd" bash -c "[ -x '$R/etc/rcyay/dienste/sshd/run' ] && [ -d '$R/etc/s6-linux-init/current/run-image/service/sshd' ] && [ -d '$R/etc/s6-linux-init/current/run-image/service/seatd' ]"
+X --init busybox
+check "s6→busybox: erzeugte s6-Dienste weg, Paketkopie dhcpcd bleibt" bash -c "[ ! -e '$R/etc/s6-linux-init/current/run-image/service/sshd' ] && [ ! -e '$R/etc/s6-linux-init/current/run-image/service/seatd' ] && [ -f '$R/etc/s6-linux-init/current/run-image/service/dhcpcd/run' ]"
+X --init runit
+baum "$W/r1"
+check "runit→s6→busybox→runit: Baum bitgleich" bash -c "diff '$W/r0' '$W/r1' > '$W/out'"
+check "ausdrücklich eingeschaltetes seatd bleibt in dienste.an" grep -qx seatd "$R/etc/rcyay/dienste.an"
+X --init systemd
+check "→systemd: Erzeugtes weg, dienste.an (Wahl des Nutzers) bleibt" bash -c "[ ! -e '$R/etc/rcyay/dienste' ] && [ ! -e '$R/etc/rcyay/dienste.erzeugt' ] && grep -qx seatd '$R/etc/rcyay/dienste.an' && [ -L '$R/etc/runit/runsvdir/default/dhcpcd' ]"
+check "→systemd: inittab ohne rcyay-Block, fremde Zeilen bleiben" bash -c "! grep -q rcyay-dienste '$R/etc/inittab' && grep -q '^::sysinit' '$R/etc/inittab'"
 
 echo "1..$N"
 [ $FAIL = 0 ] && { echo "# alle $N Tests grün"; rm -rf "$W"; exit 0; }
