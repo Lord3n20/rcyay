@@ -37,6 +37,7 @@ zwei Varianten **glibc** (Arch-Binärpakete; Enzos Laptop: NVIDIA proprietär, S
 | Repo-Pakete | Arch `core/extra/multilib` binär + Repo `usrside` | aus Arch-PKGBUILDs (gitlab.archlinux.org/archlinux/packaging) selbst gebaut, lokales Repo `usrside-musl` |
 | AUR | wie yay | Quell-Build mit Patch-Overlay; `-bin`-Pakete → „nur glibc“ |
 | NVIDIA/Steam | ja (Arch-Pakete) | nein |
+| Flatpak/Snap | nein (Enzo 26.11.: meiden; alles nativ über rcyay) | nein |
 
 - **Patch-Overlay nach Alpine/Chimera-Art:** `overlay/NAME/` im rcyay-Repo (bzw. `/usr/share/rcyay/overlay`):
   `*.patch` (werden vor `prepare()` angewendet), optional `PKGBUILD.sed`/`override.sh` (Variablen ändern,
