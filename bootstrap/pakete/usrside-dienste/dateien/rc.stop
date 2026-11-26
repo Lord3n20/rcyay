@@ -1,0 +1,9 @@
+#!/bin/sh
+# UsrsideOS: Herunterfahren (nach dem Beenden der Dienste)
+PATH=/usr/bin
+sync
+swapoff -a 2>/dev/null
+umount -a -r -t nosysfs,noproc,nodevtmpfs,nodevpts 2>/dev/null
+mount -o remount,ro / 2>/dev/null
+sync
+exit 0

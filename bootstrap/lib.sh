@@ -14,7 +14,7 @@ VARIANTE=${VARIANTE:-musl}
 case $VARIANTE in
 musl)
 	ZIEL=x86_64-linux-musl
-	ARCH_KENNUNG=x86_64-musl
+	ARCH_KENNUNG=x86_64_musl
 	LADER=/lib/ld-musl-x86_64.so.1
 	;;
 glibc)

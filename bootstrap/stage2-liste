@@ -1,0 +1,41 @@
+# stage2: Pakete in Bau-Reihenfolge. NAME HERKUNFT [SHA256 des PKGBUILD] [-ohne-install]
+#   arch:TAG = gitlab.archlinux.org/archlinux/packaging/packages/NAME, Tag TAG (+ overlay/NAME)
+#   eigen    = bootstrap/pakete/NAME (+ overlay/NAME)
+# -ohne-install: nur bauen, nicht in den chroot installieren (busybox würde die GNU-Werkzeuge
+#   des Vorbaus durch Applet-Links ersetzen).
+filesystem         eigen
+linux-api-headers  arch:7.3-1            33f2ef5193bec66ee30eae099734aa384211472cc012037cdad8697ef302497d
+musl               eigen
+ca-certificates    eigen
+zlib               arch:1-1.4-1          7a52614fda47d0552992197f3db85f51d9937ae9e905f48eab08ed6a6224b947
+bzip2              arch:1.0.8-6          904e7fdee836f640b08f73fce9490a0286f08f0989a93638397770f2b32cbaa5
+xz                 arch:5.8.4-1          02b3eb4549c0103953783386267c100ad58a0fbedcb2f068ee878b4ee9b85a99
+zstd               arch:1.5.7-3          6e92a6cf64ab0b3e4b59d838f1cd762060915ad7f13ca721246b3ae45d6c1f1d
+ncurses            arch:6.6-2            f422160ff1423d29823bea829f4e3e34d740f2775b33958751b826346120c8e1
+readline           arch:8.3.6-1          d1d6f913c14873944abfcaff06c72861963295f2b5fab0be717671237f385030
+bash               arch:5.3.20-1         0a3b824137ce9a3dfcf3c892b3b0568e89fab9366e443e584831fc1463966497
+openssl            arch:4.1.0-1          b479cfa384c0a4360bcc65191b9e92b254a22c3dfab5fcbf28d6151fb7ed7037
+libarchive         arch:3.8.11-2         e216a1a1f51412b76f5ddd8c774ae7433e523af8f58c8b233a85774695fb3188
+curl               arch:8.23.0-2         07b75f792ea78b82c8cb3116f549c4c494cba9acc943c9ffd3715b9cf463ecf3
+libgpg-error       arch:1.61-1           af7135b70e81adc454d5aa3ae3d3c788e34af1252f86c85e55e8f2c9153f8f23
+libassuan          arch:3.0.0-1          15d1af7ceebc87838042f8c7464030728ccd564e9cb410334a6bd2551c29e1ff
+gpgme              arch:2.3.1-1          17ffcae0f956bcc5d8f8fde9f2f2caa58c30a0efa1c017dae0fe2c824da79fe5
+make               arch:4.4.1-3          bd0d0512fd43ba656cc5d32c8c5fc91b01ae150b9c53e23bbf7ff86f1df45e0a
+patch              arch:2.8.1-1          772adf2993ed1b44cf6d3f30db310455f62410d50bbbd8d6fc126fd3a462621f
+pkgconf            arch:3.0.11-1         7da09e48878ac80c201ea21ca173d2f881654db60e21b163dbddeaada529ba32
+fakeroot           arch:2-1.37.2-1       38e0a5cfff81626015fce1790b39ad59641788965d59fe7b8c38beed4a29d317
+gmp                arch:6.3.0-3          266efdfcb179b1ba4d91b4fbee252b04da3e45a3ace8fd9f80fe55cfcfdc9ebe
+mpfr               arch:4.2.2-1          39c2b12653b3c8444d54ee718576b5a048164e757226c9f156a5db8868d306a7
+libmpc             arch:1.4.1-1          9f0be01b4152bfea3711c54aadc3329f94385304b88bee386a94d2c9a2a0edee
+binutils           arch:2.47-4           df189ae6cbd47500f84186f2fb058c37dafbe667f063a55e4934a518080de3f4
+gcc                eigen
+rcyay              eigen
+skalibs            eigen
+execline           eigen
+s6                 eigen
+s6-linux-init      eigen
+runit              eigen
+openssh            arch:10.6p2-1         bae94cccfab33f44af9e771ef5b2ba3a3be3a4956eaa8c576372a6c03422a14b
+dhcpcd             arch:10.5.2-2         2f6056b5f9725c8e3061b70ca65b9585e8dd8813355cf3cadc663f5bc0f84cf2
+usrside-dienste    eigen
+busybox            arch:1.36.1-4         057fdcc9521f7fef6f6611f967b02783edfce69cb3838ae6af563734d9e3bc30 -ohne-install

@@ -1,0 +1,6 @@
+#!/bin/sh
+# runit Stufe 1
+/usr/lib/usrside/rc.start
+install -m 000 /dev/null /etc/runit/stopit
+install -m 000 /dev/null /etc/runit/reboot
+exit 0

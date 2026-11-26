@@ -1,0 +1,78 @@
+# UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
+pkgname=filesystem
+pkgver=2026.11.26
+pkgrel=1
+pkgdesc='UsrsideOS base filesystem layout'
+arch=(any)
+url='https://github.com/Lord3n20/usrsideos'
+license=(GPL-2.0-only)
+backup=(etc/fstab etc/group etc/hostname etc/hosts etc/passwd etc/profile etc/resolv.conf etc/shadow etc/shells)
+install=filesystem.install
+
+package() {
+	cd "$pkgdir"
+	install -dm755 boot dev etc/{profile.d,skel,ssl/certs} home mnt opt proc run srv sys \
+		usr/{bin,include,lib,local/{bin,lib,share},share/{man,misc,licenses}} var/{cache,empty,lib,local,log,opt,spool}
+	install -dm1777 tmp var/tmp
+	install -dm0750 root
+	ln -s usr/bin bin
+	ln -s usr/bin sbin
+	ln -s usr/lib lib
+	ln -s usr/lib lib64
+	ln -s bin usr/sbin
+	ln -s lib usr/lib64
+	ln -s ../run var/run
+	ln -s ../run/lock var/lock
+	cat >etc/passwd <<-'X'
+		root:x:0:0:root:/root:/usr/bin/bash
+		bin:x:1:1::/:/usr/bin/nologin
+		daemon:x:2:2::/:/usr/bin/nologin
+		bau:x:1000:1000:makepkg:/home/bau:/usr/bin/bash
+		nobody:x:65534:65534:Nobody:/:/usr/bin/nologin
+	X
+	cat >etc/group <<-'X'
+		root:x:0:root
+		bin:x:1:root,bin,daemon
+		daemon:x:2:root,bin,daemon
+		sys:x:3:root,bin
+		adm:x:4:
+		tty:x:5:
+		disk:x:6:root
+		lp:x:7:
+		kmem:x:9:
+		wheel:x:10:root
+		audio:x:12:
+		video:x:13:
+		utmp:x:20:
+		input:x:97:
+		kvm:x:78:
+		bau:x:1000:
+		nobody:x:65534:
+	X
+	printf '%s\n' 'root:!*::::::' 'bin:!*::::::' 'daemon:!*::::::' 'bau:!*::::::' 'nobody:!*::::::' >etc/shadow
+	chmod 600 etc/shadow
+	printf '%s\n' '127.0.0.1 localhost' '::1 localhost' >etc/hosts
+	printf 'usrside\n' >etc/hostname
+	: >etc/resolv.conf
+	printf '# <file system> <dir> <type> <options> <dump> <pass>\n' >etc/fstab
+	printf '%s\n' /bin/sh /usr/bin/sh /bin/bash /usr/bin/bash >etc/shells
+	cat >etc/profile <<-'X'
+		export PATH=/usr/local/sbin:/usr/local/bin:/usr/bin
+		export LANG=C.UTF-8
+		umask 022
+		for f in /etc/profile.d/*.sh; do [ -r "$f" ] && . "$f"; done
+		unset f
+	X
+	cat >usr/lib/os-release <<-'X'
+		NAME="UsrsideOS"
+		PRETTY_NAME="UsrsideOS (musl)"
+		ID=usrside
+		ID_LIKE=arch
+		VARIANT_ID=musl
+		HOME_URL="https://github.com/Lord3n20/usrsideos"
+	X
+	ln -s ../usr/lib/os-release etc/os-release
+	printf '#!/bin/sh\necho "This account is not available"\nexit 1\n' >usr/bin/nologin
+	chmod 755 usr/bin/nologin
+	install -dm755 -o 1000 -g 1000 home/bau
+}

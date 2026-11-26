@@ -1,0 +1,4 @@
+#!/bin/sh
+# s6-linux-init: rc.shutdown
+for s in /run/service/*/; do s6-svc -d "$s"; done
+/usr/lib/usrside/rc.stop

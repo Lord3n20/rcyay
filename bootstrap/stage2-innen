@@ -1,0 +1,174 @@
+#!/usr/bin/bash
+# Teil von stage2, läuft IM chroot (aufgerufen von bootstrap/stage2, nicht direkt starten).
+#   /usrside/bootstrap  bootstrap/ (ro)      /usrside/overlay  overlay/ (ro)
+#   /usrside/quellen    Quell-Tarballs       /usrside/pkgquellen  PKGBUILD-Archive + makepkg-SRCDEST
+#   /usrside/repo       fertige Pakete       /usrside/logs, /usrside/fertig
+set -euo pipefail
+export ARBEIT=/var/tmp/usrside QUELLEN=/usrside/quellen LOGS=/usrside/logs FERTIG=/usrside/fertig
+export BAU=/var/tmp/usrside/bau
+# shellcheck source=lib.sh
+. /usrside/bootstrap/lib.sh
+REPO=/usrside/repo
+REPONAME=usrside-$VARIANTE
+PKGQ=/usrside/pkgquellen
+ARCHGIT=https://gitlab.archlinux.org/archlinux/packaging/packages
+
+nativ=(--prefix=/usr --sysconfdir=/etc --localstatedir=/var --libdir=/usr/lib --libexecdir=/usr/lib
+	--sbindir=/usr/bin --mandir=/usr/share/man --disable-nls)
+export FORCE_UNSAFE_CONFIGURE=1 MAKEINFO=true
+export CFLAGS="-O2 -pipe" CXXFLAGS="-O2 -pipe"
+
+# ---- Vorbau: was makepkg und die PKGBUILDs voraussetzen, nativ und ohne Paket ----
+gnu() { # gnu NAME [configure-Optionen …]
+	local name=$1 src
+	shift
+	src=$(auspacken "$name")
+	flicken "$src" "$name"
+	cd "$src"
+	./configure "${nativ[@]}" "$@"
+	make -j"$JOBS"
+	make install
+	cd "$BAU"
+	rm -rf "$src"
+}
+v_m4() { gnu m4; }
+v_sed() { gnu sed; }
+v_grep() { gnu grep --disable-perl-regexp; }
+v_diffutils() { gnu diffutils; }
+v_findutils() { gnu findutils; }
+v_gawk() { gnu gawk --without-readline --without-mpfr; }
+v_coreutils() { gnu coreutils --enable-no-install-program=kill,uptime,hostname --without-openssl; }
+v_file() { gnu file --disable-libseccomp; }
+v_perl() {
+	local src
+	src=$(auspacken perl)
+	cd "$src"
+	sh Configure -des -Dprefix=/usr -Dvendorprefix=/usr -Dusethreads -Duseshrplib \
+		-Dman1dir=none -Dman3dir=none -Dcc=gcc -Doptimize="-O2 -pipe"
+	make -j"$JOBS"
+	make install
+	cd "$BAU"
+	rm -rf "$src"
+}
+# _ssl braucht in 3.14.10 noch TLSv1_method (fehlt in OpenSSL 4); meson kommt ohne aus
+v_python() {
+	local src
+	src=$(auspacken python)
+	cd "$src"
+	./configure --prefix=/usr --enable-shared --without-ensurepip --with-system-expat=no \
+		--disable-test-modules py_cv_module__ssl=n/a
+	make -j"$JOBS"
+	make install
+	ln -sf python3 /usr/bin/python
+	cd "$BAU"
+	rm -rf "$src"
+}
+v_meson() {
+	local src site
+	src=$(auspacken meson)
+	site=$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')
+	rm -rf "$site/mesonbuild"
+	cp -a "$src/mesonbuild" "$site/"
+	printf '#!/usr/bin/python3\nimport sys\nfrom mesonbuild.mesonmain import main\nsys.exit(main())\n' >/usr/bin/meson
+	chmod 755 /usr/bin/meson
+	rm -rf "$src"
+}
+v_samurai() {
+	local src
+	src=$(auspacken samurai)
+	make -C "$src" CC=gcc
+	make -C "$src" PREFIX=/usr install
+	ln -sf samu /usr/bin/ninja
+	rm -rf "$src"
+	# arch-meson (gehört bei Arch zu meson), hier mit auto-features=auto: fehlt etwas, wird es abgeschaltet
+	cat >/usr/bin/arch-meson <<-'EOF'
+		#!/bin/sh
+		exec meson setup --prefix /usr --libexecdir lib --sbindir bin --buildtype plain \
+			--auto-features auto --wrap-mode nodownload -D b_pie=true -D python.bytecompile=1 "$@"
+	EOF
+	chmod 755 /usr/bin/arch-meson
+}
+
+konfiguration() {
+	# makepkg.conf/pacman.conf wie im Paket rcyay, MAKEFLAGS mit $JOBS, Repo im chroot unter $REPO
+	sed "s/\$(nproc)/$JOBS/" /usrside/bootstrap/pakete/rcyay/makepkg.conf >/etc/makepkg.conf
+	# CheckSpace geht im chroot schief (Einhängepunkte des Wirts in /proc/self/mounts)
+	sed -e "s|^Server = file:///srv/usrside-musl|Server = file://$REPO|" -e 's|^CheckSpace|#CheckSpace|' \
+		/usrside/bootstrap/pakete/rcyay/pacman.conf >/etc/pacman.conf
+	mkdir -p /home/bau/bau /var/tmp/bau
+	chown -R bau:bau /home/bau /var/tmp/bau "$PKGQ"
+	# pacman (CheckSpace) liest die Einhängepunkte aus /etc/mtab
+	[[ -e /etc/mtab ]] || ln -sf ../proc/self/mounts /etc/mtab
+}
+
+# ---- Paketbau ----
+# pkgbuild_holen NAME HERKUNFT SHA → Ordner mit PKGBUILD (unverändert)
+pkgbuild_holen() {
+	local name=$1 herkunft=$2 sum=$3 tag datei d
+	case $herkunft in
+	eigen)
+		printf '%s\n' "/usrside/bootstrap/pakete/$name"
+		;;
+	arch:*)
+		tag=${herkunft#arch:}
+		datei=$PKGQ/arch/$name-$tag.tar.gz
+		[[ -s $datei ]] || lade "$ARCHGIT/$name/-/archive/$tag/$name-$tag.tar.gz" "$datei"
+		d=$BAU/pkgbuild-$name
+		rm -rf "$d"
+		mkdir -p "$d"
+		bsdtar -xf "$datei" -C "$d" --strip-components 1
+		[[ $(_sha256 "$d/PKGBUILD") == "$sum" ]] ||
+			abbruch "$name: PKGBUILD-Prüfsumme stimmt nicht ($(_sha256 "$d/PKGBUILD"))"
+		printf '%s\n' "$d"
+		;;
+	*) abbruch "$name: unbekannte Herkunft $herkunft" ;;
+	esac
+}
+
+paketmanager() {
+	if rcyay -V >/dev/null 2>&1; then echo rcyay; else echo pacman; fi
+}
+
+paket() { # paket NAME HERKUNFT SHA FLAGS
+	local name=$1 herkunft=$2 sum=$3 flags=$4 quelle ziel=/home/bau/bau/$1 dateien
+	quelle=$(pkgbuild_holen "$name" "$herkunft" "$sum")
+	/usrside/bootstrap/overlay-anwenden "$quelle" /usrside/overlay "$name" "$ziel"
+	# von stage2 bereitgestellte Dateien (z. B. rcyay-src.tar.gz)
+	if [[ -d $PKGQ/eigen/$name ]]; then cp -a "$PKGQ/eigen/$name/." "$ziel/"; fi
+	chown -R bau:bau "$ziel"
+	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+	su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg -f --nodeps --nocheck --skippgpcheck --ignorearch --noconfirm --noprogressbar"
+	dateien=$(su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg --packagelist --ignorearch")
+	local f liste=()
+	while IFS= read -r f; do [[ -e $f ]] && liste+=("$f"); done <<<"$dateien"
+	((${#liste[@]})) || abbruch "$name: makepkg hat keine Pakete erzeugt"
+	[[ $flags == *-ohne-install* ]] && return 0
+	"$(paketmanager)" -U --noconfirm --needed --overwrite '*' -dd "${liste[@]}"
+	rm -rf /var/tmp/bau/"$name"
+}
+
+repo_aktualisieren() {
+	cd "$REPO"
+	rm -f "$REPONAME".{db,files}*
+	repo-add -q "$REPONAME.db.tar.zst" ./*.pkg.tar.zst
+	"$(paketmanager)" -Dk >"$LOGS/stage2-dk.log" 2>&1 || warnung "pacman -Dk meldet Probleme (Log $LOGS/stage2-dk.log)"
+}
+
+schritt stage2-konfiguration konfiguration
+for v in m4 sed grep diffutils findutils gawk coreutils file perl python meson samurai; do
+	schritt "stage2-vorbau-$v" "v_$v"
+done
+
+wahl=("$@")
+while read -r name herkunft rest; do
+	[[ -z $name || $name == \#* ]] && continue
+	sum=-
+	flags=
+	for f in $rest; do
+		case $f in -*) flags+=" $f" ;; *) sum=$f ;; esac
+	done
+	if ((${#wahl[@]})) && [[ " ${wahl[*]} " != *" $name "* ]]; then continue; fi
+	schritt "stage2-$name-${herkunft//[:\/]/_}" paket "$name" "$herkunft" "$sum" "$flags"
+done </usrside/bootstrap/stage2-liste
+NEU=1 schritt stage2-repo repo_aktualisieren
+meldung "Repo $REPONAME: $(find "$REPO" -name '*.pkg.tar.zst' | wc -l) Pakete"

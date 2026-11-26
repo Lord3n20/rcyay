@@ -1,0 +1,25 @@
+#!/bin/sh
+# UsrsideOS: Systemstart für BusyBox init, runit (Stufe 1) und s6 (rc.init)
+PATH=/usr/bin
+m() { mountpoint -q "$2" || mount -t "$1" -o "$3" "$1" "$2"; }
+m proc /proc nosuid,noexec,nodev
+m sysfs /sys nosuid,noexec,nodev
+m devtmpfs /dev mode=0755,nosuid
+mkdir -p /dev/pts /dev/shm
+m devpts /dev/pts gid=5,mode=620,nosuid,noexec
+m tmpfs /dev/shm mode=1777,nosuid,nodev
+m tmpfs /run mode=0755,nosuid,nodev
+mkdir -p /run/lock
+mount -o remount,rw /
+[ -f /etc/fstab ] && mount -a 2>/dev/null
+[ -s /etc/hostname ] && hostname -F /etc/hostname
+ip link set lo up
+for f in /etc/modules-load.d/*.conf; do
+	[ -r "$f" ] && grep -v '^#' "$f" | while read -r mod; do [ -n "$mod" ] && modprobe "$mod"; done
+done
+# Hotplug für Geräte, die nach dem Start kommen
+[ -e /proc/sys/kernel/hotplug ] && echo /usr/bin/mdev >/proc/sys/kernel/hotplug
+mdev -s 2>/dev/null
+ssh-keygen -A >/dev/null 2>&1
+for f in /etc/usrside/start.d/*.sh; do [ -r "$f" ] && . "$f"; done
+exit 0

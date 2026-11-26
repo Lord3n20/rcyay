@@ -1,0 +1,10 @@
+# /etc/inittab – BusyBox init (UsrsideOS)
+::sysinit:/usr/lib/usrside/rc.start
+::respawn:/etc/sv/dhcpcd/run
+::respawn:/etc/sv/sshd/run
+ttyS0::respawn:/etc/sv/getty-ttyS0/run
+tty1::respawn:/usr/bin/getty 38400 tty1
+::ctrlaltdel:/usr/bin/busybox reboot
+::shutdown:/usr/bin/killall5 -15
+::shutdown:/usr/bin/sleep 1
+::shutdown:/usr/lib/usrside/rc.stop

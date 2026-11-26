@@ -1,0 +1,13 @@
+#!/bin/sh
+# poweroff/reboot/halt passend zum laufenden Init (PID 1)
+a=${0##*/}
+case $(cat /proc/1/comm 2>/dev/null) in
+runit | runit-init)
+	case $a in reboot) exec runit-init 6 ;; *) exec runit-init 0 ;; esac ;;
+s6-svscan | s6-linux-init)
+	exec /etc/s6-linux-init/current/bin/"$a" "$@" ;;
+systemd)
+	exec systemctl "$a" "$@" ;;
+*)
+	exec busybox "$a" "$@" ;;
+esac

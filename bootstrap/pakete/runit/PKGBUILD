@@ -1,0 +1,27 @@
+# runit (smarden.org) als Init und Dienstüberwachung
+pkgname=runit
+pkgver=2.3.1
+pkgrel=1
+pkgdesc='UNIX init scheme with service supervision'
+arch=(x86_64)
+url='https://smarden.org/runit/'
+license=(BSD-3-Clause)
+depends=(musl)
+source=("https://smarden.org/runit/runit-$pkgver.tar.gz")
+sha256sums=('634f23c8c4d1d440043be0fe928ddf904626289e97bfe7c5826e93aaf2cc6fe9')
+
+build() {
+	cd admin/runit-$pkgver/src
+	echo "${CC:-gcc} $CFLAGS" >conf-cc
+	echo "${CC:-gcc} $LDFLAGS" >conf-ld
+	make
+}
+
+package() {
+	cd admin/runit-$pkgver
+	local b
+	for b in chpst runit runit-init runsv runsvchdir runsvdir sv svlogd utmpset; do
+		install -Dm755 "src/$b" "$pkgdir/usr/bin/$b"
+	done
+	install -Dm644 package/COPYING -t "$pkgdir/usr/share/licenses/$pkgname" 2>/dev/null || true
+}
