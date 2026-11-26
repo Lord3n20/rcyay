@@ -140,6 +140,9 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	chown -R bau:bau "$ziel"
 	# C.UTF-8: bsdtar scheitert sonst an UTF-8-Dateinamen (gcc-Testsuite)
 	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH LC_ALL=C.UTF-8 LANG=C.UTF-8"
+	# alten Bauordner eines fehlgeschlagenen Laufs weg: makepkg packt nur darüber aus, erzeugte Dateien
+	# (z. B. libpngs pnglibconf.h) blieben sonst stehen
+	rm -rf /var/tmp/bau/"$name"
 	su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg -f --nodeps --nocheck --skippgpcheck --ignorearch --noconfirm --noprogressbar"
 	dateien=$(su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg --packagelist --ignorearch")
 	local f liste=()
