@@ -30,9 +30,11 @@ Einstellungen (Umgebung, siehe `lib.sh`): `VARIANTE` (musl | glibc), `TC`, `ARBE
 | `overlay-anwenden` | wendet `overlay/NAME/` auf einen PKGBUILD-Ordner an (Helfer: `overlay/usrside-overlay.sh`) |
 | `pakete/NAME/` | eigene PKGBUILDs, wo Arch nichts Passendes hat (siehe unten) |
 | `live-init` | `/init` des Live-Initramfs (`abbild --squashfs`) |
-| `besitzer-reparieren` | Notbehelf: packt das Repo als root:root neu (fakeroot wirkt auf musl nicht bei tar, siehe „Offen“) |
+| `besitzer-reparieren` | alter Notbehelf (vor 774ac5e3): packt das Repo als root:root neu; seit dem fakeroot-Fix überflüssig |
 | `arch-eintrag` | Pflege (Arch-Rechner): Listenzeile `NAME arch:TAG SHA` aus den Sync-Datenbanken |
-| `m5-ordnung` | Pflege (WIP): Bau-Reihenfolge für M5 aus depends/makedepends der Sync-Datenbanken |
+| `m5-ordnung` | Pflege: Bau-Reihenfolge für M5 aus den Sync-Datenbanken (depends des gebrauchten Teilpakets, makedepends je Basis, minus `usrside_ohne` des Overlays; `--warum NAME` zeigt die Kette zum Beschneiden) |
+| `m5-liste` | M5-Pakete (Stufe 1: Wayland-Grundlage, seatd, foot) |
+| `kernel-krypto-test` | bootet einen Kernel mit Mini-Initramfs (`test/kernel-krypto.c` als /init) und prüft, was iwd vom Kernel braucht |
 
 ## Ablauf
 
@@ -78,14 +80,28 @@ Der Kernel hat dafür USB-Storage/UAS, NVMe, SR, exFAT, ISO9660, squashfs, overl
 dazu die Kernel-Krypto für iwd.
 
 **M5** (Desktop aus Quellen): `LISTE=m5-liste bootstrap/stage2 [PAKET …]` baut eine weitere Liste im selben
-chroot/Repo. Zeilen erzeugt `arch-eintrag`.
+chroot/Repo. Zeilen erzeugt `arch-eintrag`, die Reihenfolge `m5-ordnung --haben bootstrap/stage2-liste --ohne
+DOKU-WERKZEUGE,VORBAU ZIEL…`. Vorgehen wie Alpine/Chimera: Arch-PKGBUILD + Overlay; schwere *optionale*
+Abhängigkeiten (Doku, Tests, Demos, X11, glib/ICU wo verzichtbar) per `usrside_ohne` + meson-Option ab, git-Quellen
+→ Release-Tarball (Prüfsumme), cmake/autoreconf vermeiden, wo das Projekt configure/Makefile mitliefert.
 
 ## Offen
 
-- **fakeroot auf musl**: Im chroot meldet `fakeroot id -u` 0, aber tar/bsdtar sehen die echten Besitzer
-  (stat-Aufrufe von libarchive werden nicht abgefangen – vermutlich fehlen Wrapper ohne `64`-Suffix, musl ≥ 1.2.4
-  hat keine `stat64`-Symbole mehr). Bis zum Fix packt `besitzer-reparieren` die Pakete nach stage2 als
-  root:root neu. Für M5 vorher fakeroot reparieren (Alpine-Patches ansehen), sonst nach jedem Lauf reparieren.
+- M5 Stufe 2 ff.: mesa, pipewire, niri, fish, kitty, chromium (Rust-Toolchain nötig, siehe unten).
+
+### Gelöst: fakeroot auf musl (27.11.)
+musl exportiert `__xstat`, `__lxstat`, `__fxstat`, `__fxstatat`, `__xmknod(at)` nur als glibc-Kompatibilitätssymbole;
+`stat()` & Co. rufen sie nicht auf. fakeroots configure findet sie zuerst und wickelt dann *nur* sie ein → libarchive
+(ruft `stat`/`lstat`/`fstat`/`fstatat`) sah die echten Besitzer, Pakete gehörten `bau`. Fix (stage1 und
+`overlay/fakeroot`): `ac_cv_func___xstat=no` usw., dann wickelt libfakeroot `stat()` usw. direkt ein (wie bei
+glibc-Architekturen ohne xstat). stage2 installiert neu gebaute Pakete jetzt ohne `--needed` (gleiche Version
+nach NEU=1/Overlay-Änderung muss in den chroot).
+
+### iwd-Kernel-Krypto (M7)
+`bootstrap/kernel-krypto-test KERNEL` (Wirt mit gcc, openssl, bsdtar, qemu): AF_ALG md4/md5/sha1/sha256/384/512,
+hmac(…), cmac(aes), ecb/cbc/ctr(aes), ecb(des), cbc(des3_ede), ecb(arc4); keyctl DH_COMPUTE (1536-Bit-Gruppe);
+asymmetrische Schlüssel X.509 und PKCS#8 + PKEY_QUERY. Abbild-Kernel 2 (26.11.): alles da außer ecb(arc4) →
+ab abbild-kernel-3 `CRYPTO_ARC4`, `CRYPTO_USER_API_ENABLE_OBSOLETE`, `CRYPTO_CTR` im Fragment.
 
 ### Inits im Abbild (Paket `usrside-dienste`)
 Alle drei liegen im selben Abbild, gewählt wird mit `init=`:
@@ -115,6 +131,7 @@ Die Dienstdateien sind bewusst statisch; sobald `rcyay-dienste` (M2) sie aus sys
 | Python ohne `_ssl` im Vorbau | Python 3.14.10 nutzt noch `TLSv1_method`, das OpenSSL 4 nicht mehr hat; meson braucht kein ssl. |
 | gcc: zwei awk-Stellen umgeschrieben | gawk 5.4.1 auf musl: ein Feldelement, das nur in `arr[x] == ""` angefasst wurde, wird beim Anhängen zu `"0"` (`e[k] == ""; e[k] = e[k] "a"` → `0a`; gleiches gawk auf glibc → `a`; kein Optimierungs-/PMA-Effekt). gcc's `opt-gather.awk`/`optc-gen.awk` treffen genau das; `pakete/gcc` prüft dort mit `j > 1` bzw. `in`. BusyBox awk ist keine Alternative (frisst `\\+` im gsub-Ersatz → `CL_CXX` fehlt). Ursache in gawk/musl klärt M5. |
 | Kernel nicht als Paket | usrkrnl ist absichtlich ein maschinenbezogener Bau (`usrkrnl/setup`), kein generisches Paket; das Abbild bekommt ihn direkt. |
+| Rust (niri, fish ≥ 4, M5 Stufe 2) | rustc lässt sich nicht ohne vorhandenes rustc bauen; Saat ist das offizielle `x86_64-unknown-linux-musl`-Toolchain-Archiv von static.rust-lang.org (feste sha256), damit wird Arch-`rust` aus Quellen gebaut (wie Alpine/Chimera). |
 | HTTPS mit BusyBox-wget | BusyBox-TLS prüft keine Zertifikate; für Downloads mit Prüfung nimmt rcyay/makepkg curl. |
 
 ## Quellen und Vertrauen
