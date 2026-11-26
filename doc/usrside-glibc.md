@@ -64,3 +64,13 @@ telnet …) zieht kein Grundpaket; `hostname` kommt bei Bedarf von BusyBox über
 
 `glibc-rootfs` schaltet seatd mit je einer rcyay.conf pro Init ein (`rcyay --services enable seatd`), damit ein
 Abbild alle vier Inits kann; `Init =` in /etc/rcyay.conf (Standard runit) bestimmt, wofür spätere Pakete übersetzt werden.
+
+## Desktop: NVIDIA, Steam, niri
+
+- `rcyay -S nvidia-utils steam`: Steam aus `multilib` (in /etc/pacman.conf eingeschaltet), lib32-Pakete wie bei Arch.
+  Kein Flatpak/Snap. Treiber-Kernelmodul für usrkrnl ist Sache des Installers (M6, nvidia-dkms/open).
+- niri läuft unter jedem Init mit **seatd** (libseat) statt logind; Warnungen „login1/locale1 watcher“ sind harmlos.
+- Test ohne GPU (`tests/rcyay/glibc/desktop-test ABBILD_DIR [INIT]`): niri überspringt auf dem TTY Software-EGL
+  („software EGL renderers are skipped“), deshalb läuft niri dort im winit-Backend in einem weston-headless
+  (pixman) und rendert mit llvmpipe; `foot` startet, Bildschirmfoto mit grim. Mit nvidia-utils fragt glvnd
+  zuerst libEGL_nvidia – ohne NVIDIA-GPU (VM) daher `__EGL_VENDOR_LIBRARY_FILENAMES=…/50_mesa.json`.

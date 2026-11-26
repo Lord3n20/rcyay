@@ -1,0 +1,55 @@
+#!/bin/bash
+# desktop-test: glibc-Abbild booten (mit Grafik virtio-vga, ohne GPU-Beschleunigung) und M4-Ziele prüfen:
+#   nvidia-utils + steam (multilib) installierbar, niri startet mit Software-Rendering (llvmpipe, winit in weston-headless).
+#   desktop-test ABBILD_DIR [INIT]     (Laptop, startet qemu selbst; Port DT_PORT, Standard 2233; rcyay-e1d)
+# Overlay über usrside-glibc.qcow2 (wird nicht verändert). Ausgabe TAP, Exit 0 = grün, Log neben dem Overlay.
+set -u
+A=${1:?ABBILD_DIR}; INIT=${2:-runit}
+PORT=${DT_PORT:-2233}
+W=${DT_DIR:-$HOME/vm/rcyay/vms/desktop-test}; mkdir -p "$W"
+IP=$(awk -v i="$INIT" '$1==i{print $2}' "$A/usrside-glibc.inits")
+[ -n "$IP" ] || { echo "Init $INIT nicht in $A/usrside-glibc.inits"; exit 2; }
+SSH=(ssh -i "$HOME/vm/id_vm" -p "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=5 -o ServerAliveInterval=15 root@localhost)
+s() { "${SSH[@]}" "$@"; }
+N=0 FAIL=0
+ok()  { N=$((N+1)); echo "ok $N - $1"; }
+nok() { N=$((N+1)); FAIL=$((FAIL+1)); echo "not ok $N - $1"; sed 's/^/#   /' "$W/out" | tail -15; }
+check() { local d=$1; shift; if s "$@" >"$W/out" 2>&1; then ok "$d"; else nok "$d"; fi; }
+aus() { [ -f "$W/qemu.pid" ] && kill "$(cat "$W/qemu.pid")" 2>/dev/null; rm -f "$W/qemu.pid"; }
+trap aus EXIT
+aus
+rm -f "$W/disk.qcow2"; qemu-img create -q -f qcow2 -F qcow2 -b "$A/usrside-glibc.qcow2" "$W/disk.qcow2"
+qemu-system-x86_64 -name desktop-test -enable-kvm -machine q35 -cpu host -smp 4 -m 6G \
+  -drive file="$W/disk.qcow2",if=virtio,cache=unsafe -device VGA -display none \
+  -kernel "$A/usrside-glibc.vmlinuz" -append "$(head -n1 "$A/usrside-glibc.cmdline") init=$IP console=ttyS0,115200 panic=-1" \
+  -no-reboot -nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:$PORT-:22 \
+  -serial file:"$W/serial.log" -pidfile "$W/qemu.pid" -daemonize
+for _ in $(seq 90); do s true 2>/dev/null && break; sleep 2; done
+check "SSH ($INIT)" true
+check "rcyay -Syu" 'rcyay -Syu --noconfirm >/tmp/syu.log 2>&1 || { tail -20 /tmp/syu.log; exit 1; }'
+check "multilib aktiv" 'pacman -Sl multilib | head -1 | grep -q multilib'
+check "rcyay -S nvidia-utils (kein GPU-Test)" 'rcyay -S --noconfirm --needed nvidia-utils >/tmp/nv.log 2>&1 || { tail -20 /tmp/nv.log; exit 1; }; rcyay -Q nvidia-utils'
+check "rcyay -S steam (multilib, lib32)" 'rcyay -S --noconfirm --needed steam >/tmp/steam.log 2>&1 || { tail -20 /tmp/steam.log; exit 1; }; rcyay -Q steam lib32-glibc'
+check "steam-Starter vorhanden und glibc-32-Bit-Lader" 'test -x /usr/bin/steam && test -e /usr/lib32/ld-linux.so.2'
+check "rcyay -S niri foot mesa weston grim" 'rcyay -S --noconfirm --needed niri foot mesa weston grim >/tmp/niri.log 2>&1 || { tail -20 /tmp/niri.log; exit 1; }; rcyay -Q niri'
+check "DRM-Gerät da (bochs, ohne 3D)" 'for _ in 1 2 3 4 5; do [ -e /dev/dri/card0 ] && break; sleep 1; done; ls /dev/dri'
+check "seatd läuft" 'pidof seatd'
+# niri auf dem TTY überspringt Software-EGL („software EGL renderers are skipped“, tty.rs) – ohne GPU gibt es
+# dort kein Bild. Software-Rendering daher wie in CI: weston headless (pixman) als Wirt, niri mit dem
+# winit-Backend darin, EGL von mesa (llvmpipe). glvnd würde sonst libEGL_nvidia (nvidia-utils) zuerst fragen.
+s 'export XDG_RUNTIME_DIR=/run/niri-test LANG=C.UTF-8; mkdir -p -m 700 $XDG_RUNTIME_DIR
+(setsid weston --backend=headless --renderer=pixman --width=1280 --height=800 --socket=wayland-wirt >/tmp/weston.log 2>&1 &)
+sleep 3
+(WAYLAND_DISPLAY=wayland-wirt __EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json LIBGL_ALWAYS_SOFTWARE=1 RUST_LOG=niri=debug,smithay=info setsid niri >/tmp/niri.out 2>&1 &)
+sleep 8' >/dev/null 2>&1
+N1='export XDG_RUNTIME_DIR=/run/niri-test; export NIRI_SOCKET=$(ls $XDG_RUNTIME_DIR/niri.*.sock | head -1);'
+check "niri läuft (winit in weston-headless, llvmpipe)" 'pidof niri && grep -iE "llvmpipe|softpipe|renderer" /tmp/niri.out | head -3 | cut -c1-200'
+check "niri msg outputs" "$N1"' niri msg outputs | tee /dev/stderr | grep -q Output'
+check "foot im niri starten" "$N1"' niri msg action spawn -- sh -c "foot >/tmp/foot.log 2>&1"; sleep 4; pidof foot || { cat /tmp/foot.log; exit 1; }'
+check "Bildschirmfoto von niri (grim)" "$N1"' WAYLAND_DISPLAY=$(basename $(ls $XDG_RUNTIME_DIR/wayland-[0-9] | head -1)) grim /tmp/niri.png && test -s /tmp/niri.png'
+scp -q -i "$HOME/vm/id_vm" -P "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR root@localhost:/tmp/niri.png "$W/niri.png" 2>/dev/null
+s 'tail -40 /tmp/niri.out' >"$W/niri.out" 2>&1
+s "$N1"' niri msg action quit --skip-confirmation; sync; (sleep 1; poweroff) >/dev/null 2>&1 &' >/dev/null 2>&1
+for _ in $(seq 60); do [ -f "$W/qemu.pid" ] && kill -0 "$(cat "$W/qemu.pid")" 2>/dev/null || break; sleep 1; done
+echo "1..$N"; echo "# niri-Log: $W/niri.out, Bildschirmfoto: $W/niri.png"
+[ $FAIL = 0 ] && { echo "# alle $N Tests grün"; exit 0; }; echo "# $FAIL von $N fehlgeschlagen"; exit 1
