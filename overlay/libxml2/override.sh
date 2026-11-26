@@ -5,7 +5,8 @@ source=("${source[0]}") sha256sums=("${sha256sums[0]}")
 for _a in b2sums sha512sums md5sums; do unset "$_a"; done
 usrside_ohne icu libicuuc.so python doxygen git
 usrside_nur libxml2
-prepare() { :; }
+# meson.build ruft git describe auf (bricht ohne git ab, auch mit check: false)
+prepare() { sed -i "s/run_command('git', 'describe', check: false)/run_command('false', check: false)/" libxml2/meson.build; }
 build() {
 	arch-meson libxml2 build -D icu=disabled -D legacy=enabled -D python=disabled -D docs=disabled
 	meson compile -C build
