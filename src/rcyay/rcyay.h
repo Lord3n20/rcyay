@@ -149,6 +149,8 @@ int rc_aur_install(alpm_list_t *targets, alpm_list_t *upgrades, alpm_list_t *dev
 int rc_dienste_main(void);
 
 /* vprov.c */
+/* Metapaket für VirtualProvides (von rcyay erzeugt, gehört in kein Repo/AUR) */
+#define RC_VPROV_PKG "usrside-provides"
 int rc_vprov_valid(const char *s);
 void rc_vprov_add(const char *file, int line, const char *value);
 int rc_vprov_satisfies(const char *dep);

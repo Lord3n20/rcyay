@@ -158,7 +158,8 @@ konf() { # $1 = Server für usrside
 }
 konf "file://$REPO" >"$W/pacman.conf"
 
-PAKETE="usrside-base usrside-udev systemd openssh dhcpcd seatd runit s6 s6-linux-init usrside-dienste $EXTRA"
+# base-devel: makepkg für AUR-Pakete (fakeroot, debugedit, gcc …) wie bei yay; wget: BusyBox-wget kann kein HTTPS
+PAKETE="usrside-base usrside-udev systemd openssh dhcpcd seatd runit s6 s6-linux-init usrside-dienste base-devel wget $EXTRA"
 P=(pacman --config "$W/pacman.conf" -r "$ZIEL" --cachedir "$ZIEL/var/cache/pacman/pkg" --cachedir /var/cache/pacman/pkg
 	--noconfirm)
 [[ -d /hostcache ]] && P+=(--cachedir /hostcache)
@@ -223,6 +224,8 @@ for i in busybox s6 runit; do
 	"$RCW" --root "$ZIEL" --rcyayconf "$W/rcyay-$i.conf" --services apply
 done
 setze Init "$INIT" "$ZIEL/etc/rcyay.conf"
+# runit-sv sucht ohne SVDIR in /service; Notbehelf, solange sv.c nicht auf /var/service gepatcht ist
+grep -q /var/service "$ZIEL/usr/bin/sv" || ln -sfn var/service "$ZIEL/service"
 # Init-Pfade für init= (Vertrag mit abbild / test-rcyay)
 install -d "$ZIEL/usr/share/usrside"
 cat >"$ZIEL/usr/share/usrside/inits" <<-'EOF'

@@ -514,7 +514,7 @@ alpm_list_t *rc_aur_upgrades(alpm_list_t **devel)
 	*devel = NULL;
 	for(alpm_list_t *i = alpm_db_get_pkgcache(local); i; i = i->next) {
 		alpm_pkg_t *lp = i->data;
-		if(!rc_repo_find(alpm_pkg_get_name(lp))) {
+		if(!rc_repo_find(alpm_pkg_get_name(lp)) && strcmp(alpm_pkg_get_name(lp), RC_VPROV_PKG) != 0) {
 			foreign = alpm_list_add(foreign, (char *)alpm_pkg_get_name(lp));
 		}
 	}

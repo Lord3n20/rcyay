@@ -37,7 +37,7 @@
 #include "util.h"
 #include "rcyay.h"
 
-#define VPROV_PKG "usrside-provides"
+#define VPROV_PKG RC_VPROV_PKG
 
 /* Eintrag prüfen: NAME oder NAME=VERSION (wie provides=() in PKGBUILDs) */
 int rc_vprov_valid(const char *s)
