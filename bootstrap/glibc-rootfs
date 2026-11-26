@@ -204,6 +204,9 @@ rm -rf "$ZIEL/var/cache/pacman/pkg/"*
 # Schlüsselbund (archlinux-keyring bringt die Schlüssel, initialisiert aber nicht)
 inch pacman-key --init >/dev/null 2>&1
 inch pacman-key --populate archlinux >/dev/null 2>&1
+# gpg-agent/dirmngr von pacman-key beenden (liefen sonst im Bauwirt weiter, Sockets im Abbild)
+inch gpgconf --homedir /etc/pacman.d/gnupg --kill all >/dev/null 2>&1 || :
+rm -f "$ZIEL"/etc/pacman.d/gnupg/S.*
 # Zeit, Sprache
 ln -sf /usr/share/zoneinfo/Europe/Berlin "$ZIEL/etc/localtime"
 grep -q '^de_DE.UTF-8' "$ZIEL/etc/locale.gen" 2>/dev/null || printf 'de_DE.UTF-8 UTF-8\nen_US.UTF-8 UTF-8\n' >>"$ZIEL/etc/locale.gen"
