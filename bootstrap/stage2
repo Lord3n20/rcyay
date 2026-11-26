@@ -3,6 +3,7 @@
 # mit makepkg/rcyay aus Arch-PKGBUILDs (+ overlay/) bzw. bootstrap/pakete/ – und installiert jedes
 # Paket sofort in den chroot (Paketdatenbank korrekt). Ergebnis: Repo $ARBEIT/$VARIANTE/repo/usrside-musl.
 #   bootstrap/stage2 [PAKET …]      ohne PAKET: ganze Liste bootstrap/stage2-liste
+#   LISTE=m5-liste bootstrap/stage2 [PAKET …]   andere Liste (M5: Desktop-Quellbauten), gleicher chroot/Repo
 # Ablauf im chroot (bootstrap/stage2-innen): Vorbau (perl, python, meson, GNU-Werkzeuge nativ, ohne
 # Paket) → für jedes Paket: PKGBUILD holen (Prüfsumme), Overlay anwenden, makepkg als Nutzer bau, rcyay -U.
 set -euo pipefail
@@ -41,6 +42,6 @@ chown 1000:1000 "$PKGQUELLEN" "$REPO"
 
 meldung "stage2 im chroot $WURZEL"
 chroot "$WURZEL" /usr/bin/env -i HOME=/root TERM=dumb PATH=/usr/bin:/usr/local/bin \
-	VARIANTE="$VARIANTE" JOBS="$JOBS" NEU="${NEU:-0}" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
+	VARIANTE="$VARIANTE" LISTE="${LISTE:-stage2-liste}" JOBS="$JOBS" NEU="${NEU:-0}" SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" \
 	/usr/bin/bash /usrside/bootstrap/stage2-innen "$@"
 meldung "stage2 fertig: $REPO"

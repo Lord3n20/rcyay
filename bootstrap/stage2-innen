@@ -172,6 +172,6 @@ while read -r name herkunft rest; do
 	done
 	if ((${#wahl[@]})) && [[ " ${wahl[*]} " != *" $name "* ]]; then continue; fi
 	schritt "stage2-$name-${herkunft//[:\/]/_}" paket "$name" "$herkunft" "$sum" "$flags"
-done </usrside/bootstrap/stage2-liste
+done <"/usrside/bootstrap/${LISTE:-stage2-liste}"
 NEU=1 schritt stage2-repo repo_aktualisieren
 meldung "Repo $REPONAME: $(find "$REPO" -name '*.pkg.tar.zst' | wc -l) Pakete"

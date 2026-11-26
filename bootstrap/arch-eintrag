@@ -1,0 +1,31 @@
+#!/bin/bash
+# Pflegewerkzeug (nicht Teil des Baus, läuft auf einem Arch-Rechner): erzeugt Listenzeilen für
+# bootstrap/stage2-liste bzw. bootstrap/m5-liste aus den Arch-Sync-Datenbanken.
+#   bootstrap/arch-eintrag NAME …    → "PKGBASE  arch:TAG  SHA256(PKGBUILD)"
+# NAME darf ein Teilpaket sein (z. B. libudev → systemd); gebaut wird immer die pkgbase. Das PKGBUILD-Archiv
+# landet im Cache ${CACHE:-~/.cache/usrside/pkgbuilds} (gleicher Name wie in stage2: NAME-TAG.tar.gz).
+set -euo pipefail
+CACHE=${CACHE:-$HOME/.cache/usrside/pkgbuilds}
+ARCHGIT=https://gitlab.archlinux.org/archlinux/packaging/packages
+mkdir -p "$CACHE"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+for db in /var/lib/pacman/sync/{core,extra}.db; do bsdtar -xf "$db" -C "$tmp"; done
+# Tabelle NAME BASE VERSION aller Pakete
+awk 'FNR == 1 {if (name != "") print name, (base == "" ? name : base), ver; name = base = ver = ""}
+	/^%NAME%$/ {getline; name = $0} /^%BASE%$/ {getline; base = $0} /^%VERSION%$/ {getline; ver = $0}
+	END {if (name != "") print name, (base == "" ? name : base), ver}' "$tmp"/*/desc >"$tmp/tabelle"
+for n; do
+	base="" ver=""
+	read -r _ base ver < <(awk -v n="$n" '$1 == n' "$tmp/tabelle") || true
+	if [[ -z ${base:-} ]]; then
+		echo "# $n: nicht in core/extra" >&2
+		continue
+	fi
+	tag=${ver//:/-}
+	datei=$CACHE/$base-$tag.tar.gz
+	[[ -s $datei ]] || curl -fsSL --retry 3 -o "$datei" "$ARCHGIT/$base/-/archive/$tag/$base-$tag.tar.gz" ||
+		{ echo "# $base: Archiv $tag fehlt" >&2; rm -f "$datei"; continue; }
+	sum=$(bsdtar -xOf "$datei" "$base-$tag/PKGBUILD" | sha256sum | cut -d' ' -f1)
+	printf '%-20s arch:%-20s %s\n' "$base" "$tag" "$sum"
+done
