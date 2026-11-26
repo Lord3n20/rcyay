@@ -37,6 +37,8 @@ v_grep() { gnu grep --disable-perl-regexp; }
 v_diffutils() { gnu diffutils; }
 v_findutils() { gnu findutils; }
 v_gawk() { gnu gawk --without-readline --without-mpfr; }
+# stage1 hat awk auf BusyBox gelegt; gcc (opt-functions.awk) braucht gawk
+v_awk() { ln -sf gawk /usr/bin/awk; }
 v_coreutils() { gnu coreutils --enable-no-install-program=kill,uptime,hostname --without-openssl; }
 v_file() { gnu file --disable-libseccomp; }
 v_perl() {
@@ -136,7 +138,8 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	# von stage2 bereitgestellte Dateien (z. B. rcyay-src.tar.gz)
 	if [[ -d $PKGQ/eigen/$name ]]; then cp -a "$PKGQ/eigen/$name/." "$ziel/"; fi
 	chown -R bau:bau "$ziel"
-	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"
+	# C.UTF-8: bsdtar scheitert sonst an UTF-8-Dateinamen (gcc-Testsuite)
+	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH LC_ALL=C.UTF-8 LANG=C.UTF-8"
 	su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg -f --nodeps --nocheck --skippgpcheck --ignorearch --noconfirm --noprogressbar"
 	dateien=$(su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg --packagelist --ignorearch")
 	local f liste=()
@@ -155,7 +158,7 @@ repo_aktualisieren() {
 }
 
 schritt stage2-konfiguration konfiguration
-for v in m4 sed grep diffutils findutils gawk coreutils file perl python meson samurai; do
+for v in m4 sed grep diffutils findutils gawk awk coreutils file perl python meson samurai; do
 	schritt "stage2-vorbau-$v" "v_$v"
 done
 

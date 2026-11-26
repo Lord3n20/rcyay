@@ -21,6 +21,8 @@ package() {
 	while read -r l; do
 		l=${l##*/}
 		[[ $andere == *" $l "* || $l == busybox || $l == linuxrc ]] && continue
+		# was ein anderes installiertes Paket schon liefert (runit sv/chpst, binutils strings …), bleibt dessen
+		[[ -e /usr/bin/$l ]] && pacman -Qqo "/usr/bin/$l" >/dev/null 2>&1 && continue
 		ln -sf busybox "$pkgdir/usr/bin/$l"
 	done <busybox.links
 }

@@ -1,6 +1,8 @@
 #!/bin/bash
 # abbild: bootfähiges qcow2 aus dem Repo von stage2 (btrfs, Subvolume @ und @home) mit usrkrnl ohne Initramfs.
-#   bootstrap/abbild [--nur-kernel] [AUSGABEORDNER]       (Standard /root/aus)
+#   bootstrap/abbild [--nur-kernel] [--rootfs DIR] [AUSGABEORDNER]       (Standard /root/aus)
+#   --rootfs DIR: fertiges Rootfs (z. B. bootstrap/glibc-rootfs, M4) statt Paketinstallation aus dem Repo;
+#                 DIR/usr/share/usrside/inits ersetzt dann die Init-Liste
 # Ausgabe (Vertrag mit ~/vm/rcyay/test-rcyay):
 #   usrside-VARIANTE.qcow2    GPT: 1 ESP (vfat, Kernel als EFI/BOOT/BOOTX64.EFI), 2 btrfs (@ = /, @home)
 #   usrside-VARIANTE.vmlinuz  usrkrnl-bzImage (virtio, btrfs, 9p fest eingebaut; kein Initramfs)
@@ -14,15 +16,22 @@ set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 ((EUID == 0)) || abbruch "abbild braucht root (losetup, mount, chroot)"
 brauche qemu-img sfdisk losetup mkfs.btrfs mkfs.vfat btrfs clang ld.lld
-NUR_KERNEL=0
-[[ ${1:-} == --nur-kernel ]] && { NUR_KERNEL=1; shift; }
+NUR_KERNEL=0 ROOTFS=""
+while (($#)); do
+	case $1 in
+	--nur-kernel) NUR_KERNEL=1 ;;
+	--rootfs) ROOTFS=$(cd "${2:?--rootfs braucht einen Ordner}" && pwd); shift ;;
+	*) break ;;
+	esac
+	shift
+done
 AUS=${1:-/root/aus}
 REPO=$ARBEIT/$VARIANTE/repo
 REPONAME=usrside-$VARIANTE
 GROESSE=${GROESSE:-12G}
 SCHLUESSEL=${SCHLUESSEL:-/root/.ssh/authorized_keys}
 CMDLINE="root=/dev/vda2 rootfstype=btrfs rootflags=subvol=@ rw"
-((NUR_KERNEL)) || [[ -s $REPO/$REPONAME.db.tar.zst ]] || abbruch "kein Repo $REPO – zuerst bootstrap/stage2"
+((NUR_KERNEL)) || [[ -n $ROOTFS || -s $REPO/$REPONAME.db.tar.zst ]] || abbruch "kein Repo $REPO – zuerst bootstrap/stage2"
 if [[ -z ${USRKRNL:-} ]]; then
 	for d in /root/usrsideos/usrkrnl "$HOME/usrsideos/usrkrnl"; do [[ -x $d/setup ]] && { USRKRNL=$d; break; }; done
 fi
@@ -118,8 +127,27 @@ abhaengen() {
 }
 trap abhaengen EXIT
 
+pakete_installieren() {
+	local pakete pm=rcyay
+	mkdir -p "$MNT/var/lib/pacman" "$MNT/srv/$REPONAME"
+	# Repo ins Abbild (rcyay -Syu im Abbild nutzt file:///srv/usrside-VARIANTE)
+	cp -a "$REPO/." "$MNT/srv/$REPONAME/"
+	# Installation mit rcyay aus dem stage2-chroot (musl), Ziel als -r
+	chroot_grund "$WURZEL"
+	einhaengen "$WURZEL" "$MNT" /mnt/abbild --bind
+	einhaengen "$WURZEL" "$REPO" /usrside/repo --bind
+	chroot "$WURZEL" rcyay -V >/dev/null 2>&1 || pm=pacman
+	pakete=${PAKETE:-$(chroot "$WURZEL" "$pm" -Sylq "$REPONAME" | sort -u | tr '\n' ' ')}
+	meldung "installiere: $pakete"
+	# shellcheck disable=SC2086
+	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild --cachedir /mnt/abbild/var/cache/pacman/pkg \
+		-Sy --noconfirm --needed $pakete
+	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild -Dk
+	aushaengen
+}
+
 installieren() {
-	local roh=$KBAU/abbild.raw tree pakete
+	local roh=$KBAU/abbild.raw tree
 	tree=$(<"$KBAU/baum")
 	SCHLEIFE=$(losetup -P -f --show "$roh")
 	mkfs.vfat -F 32 -n ESP "${SCHLEIFE}p1" >/dev/null
@@ -133,23 +161,12 @@ installieren() {
 	mkdir -p "$MNT/home" "$MNT/efi"
 	mount -o subvol=@home,compress=zstd "${SCHLEIFE}p2" "$MNT/home"
 	mount "${SCHLEIFE}p1" "$MNT/efi"
-	mkdir -p "$MNT/var/lib/pacman" "$MNT/srv/$REPONAME"
-
-	# Repo ins Abbild (rcyay -Syu im Abbild nutzt file:///srv/usrside-VARIANTE)
-	cp -a "$REPO/." "$MNT/srv/$REPONAME/"
-	# Installation mit rcyay aus dem stage2-chroot (musl), Ziel als -r
-	chroot_grund "$WURZEL"
-	einhaengen "$WURZEL" "$MNT" /mnt/abbild --bind
-	einhaengen "$WURZEL" "$REPO" /usrside/repo --bind
-	local pm=rcyay
-	chroot "$WURZEL" rcyay -V >/dev/null 2>&1 || pm=pacman
-	pakete=${PAKETE:-$(chroot "$WURZEL" "$pm" -Sylq "$REPONAME" | sort -u | tr '\n' ' ')}
-	meldung "installiere: $pakete"
-	# shellcheck disable=SC2086
-	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild --cachedir /mnt/abbild/var/cache/pacman/pkg \
-		-Sy --noconfirm --needed $pakete
-	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild -Dk
-	aushaengen
+	if [[ -n $ROOTFS ]]; then
+		meldung "kopiere Rootfs $ROOTFS"
+		cp -a --preserve=all "$ROOTFS/." "$MNT/"
+	else
+		pakete_installieren
+	fi
 
 	# Kernel-Module und Kernel
 	make -C "$tree" LLVM="$(dirname "$(command -v clang)")/" LOCALVERSION= INSTALL_MOD_PATH="$MNT/usr" \
@@ -169,11 +186,12 @@ installieren() {
 	EOF
 	printf 'usrside-%s\n' "$VARIANTE" >"$MNT/etc/hostname"
 	sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$MNT/etc/ssh/sshd_config"
-	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=)
-	if grep -q '^Init *=' "$MNT/etc/rcyay.conf" 2>/dev/null; then
-		sed -i "s/^Init *=.*/Init = ${ABBILD_INIT:-runit}/" "$MNT/etc/rcyay.conf"
-	else
+	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=);
+	# ein vorhandener Eintrag bleibt, außer ABBILD_INIT ist gesetzt
+	if ! grep -q '^Init *=' "$MNT/etc/rcyay.conf" 2>/dev/null; then
 		printf 'Init = %s\n' "${ABBILD_INIT:-runit}" >>"$MNT/etc/rcyay.conf"
+	elif [[ -n ${ABBILD_INIT:-} ]]; then
+		sed -i "s/^Init *=.*/Init = $ABBILD_INIT/" "$MNT/etc/rcyay.conf"
 	fi
 	sync
 }
@@ -185,8 +203,12 @@ ausgeben() {
 	mv "$AUS/$n.qcow2.neu" "$AUS/$n.qcow2"
 	install -m644 "$tree/arch/x86/boot/bzImage" "$AUS/$n.vmlinuz"
 	printf '%s\n' "$CMDLINE" >"$AUS/$n.cmdline"
-	printf '%s\n' "busybox /usr/bin/init" "runit /usr/bin/runit-init" \
-		"s6 /etc/s6-linux-init/current/bin/init" >"$AUS/$n.inits"
+	if [[ -n $ROOTFS && -s $ROOTFS/usr/share/usrside/inits ]]; then
+		cp "$ROOTFS/usr/share/usrside/inits" "$AUS/$n.inits"
+	else
+		printf '%s\n' "busybox /usr/bin/init" "runit /usr/bin/runit-init" \
+			"s6 /etc/s6-linux-init/current/bin/init" >"$AUS/$n.inits"
+	fi
 	commit=${ABBILD_COMMIT:-}
 	[[ -n $commit ]] || commit=$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null || true)
 	[[ -n $commit ]] || commit=$(git -c safe.directory='*' -C /root/rcyay rev-parse bootstrap 2>/dev/null || echo unbekannt)
@@ -195,7 +217,8 @@ ausgeben() {
 	ls -l "$AUS"/"$n".*
 }
 
-schritt abbild-kernel kernel
+# der Kernel hängt nicht von der Variante ab: eine Marke für musl und glibc
+FERTIG=$KBAU/fertig schritt abbild-kernel kernel
 ((NUR_KERNEL)) && exit 0
 platte_anlegen
 installieren
