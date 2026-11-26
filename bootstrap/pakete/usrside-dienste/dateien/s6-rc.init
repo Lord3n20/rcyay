@@ -1,4 +1,7 @@
 #!/bin/sh
-# s6-linux-init: rc.init (läuft, wenn s6-svscan schon PID 1 ist); Dienste sind "down" bis hier
+# s6-linux-init: rc.init (s6-svscan ist schon PID 1); unsere Dienste sind "down", bis das System bereit ist
 /usr/lib/usrside/rc.start
-for s in /run/service/*/; do s6-svc -u "$s"; done
+for s in /run/service/*/; do
+	[ -e "$s/down" ] && s6-svc -u "$s"
+done
+exit 0

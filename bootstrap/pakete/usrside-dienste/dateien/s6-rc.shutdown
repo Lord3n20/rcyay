@@ -1,4 +1,13 @@
 #!/bin/sh
-# s6-linux-init: rc.shutdown
-for s in /run/service/*/; do s6-svc -d "$s"; done
+# s6-linux-init: rc.shutdown (läuft als Kind von s6-linux-init-shutdownd)
+# Nur die eigenen Dienste anhalten: s6-linux-init-shutdownd und s6-svscan-log liegen auch in /run/service –
+# hält man shutdownd an, bleibt das Herunterfahren hängen.
+for d in /etc/sv/*/; do
+	n=${d%/}; n=${n##*/}
+	[ -d "/run/service/$n" ] && s6-svc -d "/run/service/$n"
+done
+for d in /etc/sv/*/; do
+	n=${d%/}; n=${n##*/}
+	[ -d "/run/service/$n" ] && s6-svwait -D -t 5000 "/run/service/$n" 2>/dev/null
+done
 /usr/lib/usrside/rc.stop

@@ -15,6 +15,7 @@ sha256sums=('e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e')
 prepare() {
 	cd "gcc-$pkgver"
 	sed -i '/m64=/s/lib64/lib/' gcc/config/i386/t-linux64
+	rm -rf "$srcdir/gcc-build"
 	mkdir -p "$srcdir/gcc-build"
 }
 

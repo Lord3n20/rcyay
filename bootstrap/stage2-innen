@@ -37,8 +37,9 @@ v_grep() { gnu grep --disable-perl-regexp; }
 v_diffutils() { gnu diffutils; }
 v_findutils() { gnu findutils; }
 v_gawk() { gnu gawk --without-readline --without-mpfr; }
-# stage1 hat awk auf BusyBox gelegt; gcc (opt-functions.awk) braucht gawk
-v_awk() { ln -sf gawk /usr/bin/awk; }
+# gawk 5.4.1 auf musl sortiert in gcc/opt-gather.awk falsch (options.cc: "… does not have a Var() flag"),
+# BusyBox awk liefert dasselbe wie gawk auf glibc. Bis das geklärt ist (M5): awk = BusyBox, kein gawk im chroot.
+v_awk2() { rm -f /usr/bin/gawk /usr/bin/gawk-[0-9]*; ln -sf busybox /usr/bin/awk; }
 v_coreutils() { gnu coreutils --enable-no-install-program=kill,uptime,hostname --without-openssl; }
 v_file() { gnu file --disable-libseccomp; }
 v_perl() {
@@ -158,7 +159,7 @@ repo_aktualisieren() {
 }
 
 schritt stage2-konfiguration konfiguration
-for v in m4 sed grep diffutils findutils gawk awk coreutils file perl python meson samurai; do
+for v in m4 sed grep diffutils findutils gawk awk2 coreutils file perl python meson samurai; do
 	schritt "stage2-vorbau-$v" "v_$v"
 done
 
