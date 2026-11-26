@@ -1,36 +1,63 @@
 #!/bin/bash
-# abbild: bootfähiges qcow2 aus dem Repo von stage2 (btrfs, Subvolume @ und @home) mit usrkrnl ohne Initramfs.
-#   bootstrap/abbild [--nur-kernel] [--rootfs DIR] [AUSGABEORDNER]       (Standard /root/aus)
-#   --rootfs DIR: fertiges Rootfs (z. B. bootstrap/glibc-rootfs, M4) statt Paketinstallation aus dem Repo;
-#                 DIR/usr/share/usrside/inits ersetzt dann die Init-Liste
-# Ausgabe (Vertrag mit ~/vm/rcyay/test-rcyay):
+# abbild: UsrsideOS-Abbilder aus dem Repo von stage2, mit usrkrnl. Zwei Schritte:
+#   1. Rootfs-Bau  → $ARBEIT/$VARIANTE/abbild-rootfs (Pakete aus dem Repo bzw. --rootfs DIR, Kernel-Module,
+#                    Grundeinstellungen: Schlüssel, Hostname, issue, sshd, rcyay.conf)
+#   2. Ausgabe     → Platte (qcow2, Standard) und/oder Live (squashfs + Live-Kernel + Mini-Initramfs)
+#   bootstrap/abbild [--nur-kernel] [--nur-rootfs] [--rootfs DIR] [--squashfs] [--platte] [AUSGABEORDNER]
+#   --rootfs DIR   fertiges Rootfs (z. B. bootstrap/glibc-rootfs, M4) statt Paketinstallation aus dem Repo;
+#                  DIR/usr/share/usrside/inits ersetzt dann die Init-Liste
+#   --squashfs     Live-Ausgabe; ohne --platte dann keine qcow2
+#   --platte       qcow2 (Standard, wenn weder --squashfs noch --nur-rootfs)
+#   --nur-rootfs   nur Schritt 1
+# Platten-Ausgabe (Vertrag mit ~/vm/rcyay/test-rcyay), Ordner Standard /root/aus:
 #   usrside-VARIANTE.qcow2    GPT: 1 ESP (vfat, Kernel als EFI/BOOT/BOOTX64.EFI), 2 btrfs (@ = /, @home)
-#   usrside-VARIANTE.vmlinuz  usrkrnl-bzImage (virtio, btrfs, 9p fest eingebaut; kein Initramfs)
+#   usrside-VARIANTE.vmlinuz  usrkrnl-bzImage (virtio, btrfs, 9p fest eingebaut; kein Initramfs;
+#                             eingebaute Befehlszeile = .cmdline, damit die ESP ohne Bootlader startet)
 #   usrside-VARIANTE.cmdline  root=/dev/vda2 rootfstype=btrfs rootflags=subvol=@ rw
 #   usrside-VARIANTE.inits    INIT PFAD (alle Inits im selben Abbild, Wahl per init=)
 #   usrside-VARIANTE.commit   git-Hash von bootstrap
+# Live-Ausgabe (für das ISO von M7):
+#   usrside-VARIANTE-live.squashfs   Rootfs (zstd); gehört ins Medium als usrside/rootfs.sfs
+#   usrside-VARIANTE-live.vmlinuz    derselbe Kernel OHNE eingebaute Befehlszeile (Befund e1e)
+#   usrside-VARIANTE-live.initramfs  BusyBox-Initramfs (bootstrap/live-init, cpio+zstd): sucht usrside/rootfs.sfs
+#                                    auf allen Geräten bzw. in *.iso auf allen Partitionen (exFAT, Ventoy-dm)
+#   usrside-VARIANTE-live.cmdline    Vorschlag (console=…); init= wie in .inits
+#   usrside-VARIANTE-live.inits, …-live.commit
 # Umgebung: GROESSE (Standard 12G), SCHLUESSEL (authorized_keys für root, Standard /root/.ssh/authorized_keys),
 #   USRKRNL (Standard /root/usrsideos/usrkrnl bzw. ~/usrsideos/usrkrnl), PAKETE (Standard: alle aus dem Repo),
-#   KERNEL_NUTZER (normaler Nutzer für usrkrnl/setup, Standard bau)
+#   KERNEL_NUTZER (normaler Nutzer für usrkrnl/setup, Standard bau), BUSYBOX_REPO (Repo mit busybox und musl
+#   fürs Initramfs, Standard $ARBEIT/musl/repo – das Initramfs ist für beide Varianten musl)
 set -euo pipefail
 . "$(dirname "$0")/lib.sh"
 ((EUID == 0)) || abbruch "abbild braucht root (losetup, mount, chroot)"
 brauche qemu-img sfdisk losetup mkfs.btrfs mkfs.vfat btrfs clang ld.lld
-NUR_KERNEL=0 ROOTFS=""
+NUR_KERNEL=0 NUR_ROOTFS=0 ROOTFS="" PLATTE="" LIVE=0
 while (($#)); do
 	case $1 in
 	--nur-kernel) NUR_KERNEL=1 ;;
+	--nur-rootfs) NUR_ROOTFS=1 ;;
 	--rootfs) ROOTFS=$(cd "${2:?--rootfs braucht einen Ordner}" && pwd); shift ;;
+	--squashfs) LIVE=1 ;;
+	--platte) PLATTE=1 ;;
+	-*) abbruch "unbekannte Option $1" ;;
 	*) break ;;
 	esac
 	shift
 done
+if [[ -z $PLATTE ]]; then
+	PLATTE=1
+	((LIVE || NUR_ROOTFS)) && PLATTE=0
+fi
+((LIVE)) && brauche mksquashfs cpio zstd bsdtar
 AUS=${1:-/root/aus}
 REPO=$ARBEIT/$VARIANTE/repo
 REPONAME=usrside-$VARIANTE
 GROESSE=${GROESSE:-12G}
 SCHLUESSEL=${SCHLUESSEL:-/root/.ssh/authorized_keys}
 CMDLINE="root=/dev/vda2 rootfstype=btrfs rootflags=subvol=@ rw"
+LIVE_CMDLINE="console=tty0 console=ttyS0,115200"
+BUSYBOX_REPO=${BUSYBOX_REPO:-$ARBEIT/musl/repo}
+RFS=$ARBEIT/$VARIANTE/abbild-rootfs
 ((NUR_KERNEL)) || [[ -n $ROOTFS || -s $REPO/$REPONAME.db.tar.zst ]] || abbruch "kein Repo $REPO – zuerst bootstrap/stage2"
 if [[ -z ${USRKRNL:-} ]]; then
 	for d in /root/usrsideos/usrkrnl "$HOME/usrsideos/usrkrnl"; do [[ -x $d/setup ]] && { USRKRNL=$d; break; }; done
@@ -41,6 +68,7 @@ KERNEL_NUTZER=${KERNEL_NUTZER:-bau}
 mkdir -p "$AUS" "$KBAU"
 
 # ---- Kernel: usrkrnl für die Test-VM (virtio + btrfs + 9p eingebaut, Module unkomprimiert für BusyBox) ----
+# Ergebnis: $KBAU/vmlinuz-platte (eingebaute CMDLINE) und $KBAU/vmlinuz-live (ohne), gleiche Module
 kernel() {
 	cat >"$KBAU/abbild.config" <<-'EOF'
 		CONFIG_BTRFS_FS=y
@@ -63,7 +91,7 @@ kernel() {
 		CONFIG_PACKET=y
 		CONFIG_VFAT_FS=y
 		CONFIG_EFI_STUB=y
-		# für das spätere Live-/Installer-ISO (M7)
+		# Live-/Installer-Medium (M7): alles, was das Initramfs zum Finden des Rootfs braucht, fest eingebaut
 		CONFIG_SQUASHFS=y
 		CONFIG_SQUASHFS_ZSTD=y
 		CONFIG_SQUASHFS_XZ=y
@@ -71,10 +99,32 @@ kernel() {
 		CONFIG_BLK_DEV_LOOP=y
 		CONFIG_ISO9660_FS=y
 		CONFIG_JOLIET=y
+		CONFIG_ZISOFS=y
 		CONFIG_EXFAT_FS=y
+		CONFIG_NLS_UTF8=y
+		CONFIG_NLS_CODEPAGE_437=y
+		CONFIG_NLS_ISO8859_1=y
 		CONFIG_BLK_DEV_DM=y
 		CONFIG_MD=y
 		CONFIG_BLK_DEV_INITRD=y
+		CONFIG_RD_ZSTD=y
+		CONFIG_TMPFS=y
+		CONFIG_USB_SUPPORT=y
+		CONFIG_USB=y
+		CONFIG_USB_XHCI_HCD=y
+		CONFIG_USB_XHCI_PCI=y
+		CONFIG_USB_EHCI_HCD=y
+		CONFIG_USB_EHCI_PCI=y
+		CONFIG_USB_STORAGE=y
+		CONFIG_USB_UAS=y
+		CONFIG_BLK_DEV_SD=y
+		CONFIG_BLK_DEV_SR=y
+		CONFIG_BLK_DEV_NVME=y
+		CONFIG_NVME_CORE=y
+		CONFIG_SATA_AHCI=y
+		CONFIG_HID=y
+		CONFIG_HID_GENERIC=y
+		CONFIG_USB_HID=y
 		CONFIG_MODULE_COMPRESS_NONE=y
 		# CONFIG_MODULE_COMPRESS_ZSTD is not set
 		# CONFIG_MODULE_COMPRESS_XZ is not set
@@ -90,51 +140,37 @@ kernel() {
 		--cmdline 'console=ttyS0,115200'"
 	local tree
 	tree=$(find "$KBAU/src" -maxdepth 1 -name 'linux-*' -type d | sort -V | tail -n1)
-	# eingebaute Befehlszeile für das Abbild (setup trägt die Wurzel des Bauwirts ein)
-	"$tree/scripts/config" --file "$tree/.config" --set-str CMDLINE "$CMDLINE"
+	# eingebaute Befehlszeile für das Platten-Abbild (setup trägt die Wurzel des Bauwirts ein)
+	"$tree/scripts/config" --file "$tree/.config" --enable CMDLINE_BOOL --set-str CMDLINE "$CMDLINE"
 	local llvm
 	llvm=$(dirname "$(command -v clang)")
 	make -C "$tree" LLVM="$llvm/" LOCALVERSION= olddefconfig >/dev/null
 	local s
-	for s in BTRFS_FS VIRTIO_BLK VIRTIO_NET VIRTIO_PCI 9P_FS NET_9P_VIRTIO SERIAL_8250_CONSOLE DEVTMPFS_MOUNT; do
+	for s in BTRFS_FS VIRTIO_BLK VIRTIO_NET VIRTIO_PCI 9P_FS NET_9P_VIRTIO SERIAL_8250_CONSOLE DEVTMPFS_MOUNT \
+		SQUASHFS OVERLAY_FS BLK_DEV_LOOP ISO9660_FS EXFAT_FS BLK_DEV_DM USB_STORAGE BLK_DEV_NVME RD_ZSTD; do
 		grep -q "^CONFIG_$s=y" "$tree/.config" || abbruch "CONFIG_$s ist nicht =y"
 	done
 	make -C "$tree" LLVM="$llvm/" LOCALVERSION= -j"$JOBS" bzImage modules
+	install -m644 "$tree/arch/x86/boot/bzImage" "$KBAU/vmlinuz-platte"
+	# Live-Kernel: dieselbe Konfiguration ohne eingebaute Befehlszeile (nur wenige Dateien werden neu übersetzt)
+	"$tree/scripts/config" --file "$tree/.config" --disable CMDLINE_BOOL --set-str CMDLINE ""
+	make -C "$tree" LLVM="$llvm/" LOCALVERSION= olddefconfig >/dev/null
+	make -C "$tree" LLVM="$llvm/" LOCALVERSION= -j"$JOBS" bzImage
+	install -m644 "$tree/arch/x86/boot/bzImage" "$KBAU/vmlinuz-live"
 	printf '%s\n' "$tree" >"$KBAU/baum"
 }
 
-# ---- Platte ----
-platte_anlegen() {
-	local roh=$KBAU/abbild.raw
-	rm -f "$roh"
-	truncate -s "$GROESSE" "$roh"
-	sfdisk -q "$roh" <<-'EOF'
-		label: gpt
-		size=256MiB, type=uefi, name=esp
-		type=linux, name=usrside
-	EOF
-}
+# ---- Schritt 1: Rootfs ----
+eingehaengt_unter() { findmnt -rn -o TARGET | grep -q "^$1\(/\|$\)"; }
 
-SCHLEIFE=""
-MNT=$KBAU/mnt
-abhaengen() {
-	aushaengen
-	mountpoint -q "$MNT/efi" && umount "$MNT/efi"
-	mountpoint -q "$MNT/home" && umount "$MNT/home"
-	mountpoint -q "$MNT" && umount "$MNT"
-	[[ -n $SCHLEIFE ]] && losetup -d "$SCHLEIFE" 2>/dev/null
-	SCHLEIFE=""
-}
-trap abhaengen EXIT
-
-pakete_installieren() {
-	local pakete pm=rcyay
-	mkdir -p "$MNT/var/lib/pacman" "$MNT/var/cache/pacman/pkg" "$MNT/srv/$REPONAME"
+pakete_installieren() { # pakete_installieren ZIEL
+	local ziel=$1 pakete pm=rcyay
+	mkdir -p "$ziel/var/lib/pacman" "$ziel/var/cache/pacman/pkg" "$ziel/srv/$REPONAME"
 	# Repo ins Abbild (rcyay -Syu im Abbild nutzt file:///srv/usrside-VARIANTE)
-	cp -a "$REPO/." "$MNT/srv/$REPONAME/"
+	cp -a "$REPO/." "$ziel/srv/$REPONAME/"
 	# Installation mit rcyay aus dem stage2-chroot (musl), Ziel als -r
 	chroot_grund "$WURZEL"
-	einhaengen "$WURZEL" "$MNT" /mnt/abbild --bind
+	einhaengen "$WURZEL" "$ziel" /mnt/abbild --bind
 	einhaengen "$WURZEL" "$REPO" /usrside/repo --bind
 	chroot "$WURZEL" rcyay -V >/dev/null 2>&1 || pm=pacman
 	# -Sy getrennt: sonst landen Fortschrittsmeldungen in der Paketliste
@@ -148,9 +184,72 @@ pakete_installieren() {
 	aushaengen
 }
 
-installieren() {
-	local roh=$KBAU/abbild.raw tree
+rootfs_bauen() {
+	local tree osname
 	tree=$(<"$KBAU/baum")
+	eingehaengt_unter "$RFS" && abbruch "unter $RFS ist noch etwas eingehängt"
+	rm -rf "$RFS"
+	mkdir -p "$RFS"
+	if [[ -n $ROOTFS ]]; then
+		meldung "kopiere Rootfs $ROOTFS"
+		cp -a --preserve=all "$ROOTFS/." "$RFS/"
+	else
+		pakete_installieren "$RFS"
+	fi
+
+	# Kernel-Module und Kernel
+	make -C "$tree" LLVM="$(dirname "$(command -v clang)")/" LOCALVERSION= INSTALL_MOD_PATH="$RFS/usr" \
+		INSTALL_MOD_STRIP=1 DEPMOD=/bin/true modules_install
+	rm -f "$RFS"/usr/lib/modules/*/build
+	depmod -b "$RFS/usr" "$(make -s -C "$tree" LOCALVERSION= kernelrelease)"
+	install -Dm644 "$KBAU/vmlinuz-platte" "$RFS/boot/vmlinuz-usrkrnl"
+
+	# Grundeinstellungen (Platte und Live)
+	install -dm700 "$RFS/root/.ssh"
+	install -m600 "$SCHLUESSEL" "$RFS/root/.ssh/authorized_keys"
+	printf 'usrside-%s\n' "$VARIANTE" >"$RFS/etc/hostname"
+	# /etc/issue ohne agetty-Escapes: BusyBox-getty kennt \S{PRETTY_NAME} nicht (Befund t1)
+	osname=$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$RFS/etc/os-release" "$RFS/usr/lib/os-release" 2>/dev/null | head -n1)
+	printf '%s \\r (\\l)\n\n' "${osname:-UsrsideOS ($VARIANTE)}" >"$RFS/etc/issue"
+	sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$RFS/etc/ssh/sshd_config"
+	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=);
+	# ein vorhandener Eintrag bleibt, außer ABBILD_INIT ist gesetzt
+	if ! grep -q '^Init *=' "$RFS/etc/rcyay.conf" 2>/dev/null; then
+		printf 'Init = %s\n' "${ABBILD_INIT:-runit}" >>"$RFS/etc/rcyay.conf"
+	elif [[ -n ${ABBILD_INIT:-} ]]; then
+		sed -i "s/^Init *=.*/Init = $ABBILD_INIT/" "$RFS/etc/rcyay.conf"
+	fi
+	# Init-Liste für .inits
+	if [[ -n $ROOTFS && -s $ROOTFS/usr/share/usrside/inits ]]; then
+		cp "$ROOTFS/usr/share/usrside/inits" "$KBAU/inits"
+	else
+		printf '%s\n' "busybox /usr/bin/init" "runit /usr/bin/runit-init" \
+			"s6 /etc/s6-linux-init/current/bin/init" >"$KBAU/inits"
+	fi
+}
+
+# ---- Schritt 2a: Platte ----
+SCHLEIFE=""
+MNT=$KBAU/mnt
+abhaengen() {
+	aushaengen
+	mountpoint -q "$MNT/efi" && umount "$MNT/efi"
+	mountpoint -q "$MNT/home" && umount "$MNT/home"
+	mountpoint -q "$MNT" && umount "$MNT"
+	[[ -n $SCHLEIFE ]] && losetup -d "$SCHLEIFE" 2>/dev/null
+	SCHLEIFE=""
+}
+trap abhaengen EXIT
+
+platte() {
+	local roh=$KBAU/abbild.raw
+	rm -f "$roh"
+	truncate -s "$GROESSE" "$roh"
+	sfdisk -q "$roh" <<-'EOF'
+		label: gpt
+		size=256MiB, type=uefi, name=esp
+		type=linux, name=usrside
+	EOF
 	SCHLEIFE=$(losetup -P -f --show "$roh")
 	mkfs.vfat -F 32 -n ESP "${SCHLEIFE}p1" >/dev/null
 	mkfs.btrfs -q -f -L usrside "${SCHLEIFE}p2"
@@ -163,71 +262,84 @@ installieren() {
 	mkdir -p "$MNT/home" "$MNT/efi"
 	mount -o subvol=@home,compress=zstd "${SCHLEIFE}p2" "$MNT/home"
 	mount "${SCHLEIFE}p1" "$MNT/efi"
-	if [[ -n $ROOTFS ]]; then
-		meldung "kopiere Rootfs $ROOTFS"
-		cp -a --preserve=all "$ROOTFS/." "$MNT/"
-	else
-		pakete_installieren
-	fi
-
-	# Kernel-Module und Kernel
-	make -C "$tree" LLVM="$(dirname "$(command -v clang)")/" LOCALVERSION= INSTALL_MOD_PATH="$MNT/usr" \
-		INSTALL_MOD_STRIP=1 DEPMOD=/bin/true modules_install
-	rm -f "$MNT"/usr/lib/modules/*/build
-	depmod -b "$MNT/usr" "$(make -s -C "$tree" LOCALVERSION= kernelrelease)"
-	install -Dm644 "$tree/arch/x86/boot/bzImage" "$MNT/efi/EFI/BOOT/BOOTX64.EFI"
-	install -Dm644 "$tree/arch/x86/boot/bzImage" "$MNT/boot/vmlinuz-usrkrnl"
-
-	# Konfiguration
-	install -dm700 "$MNT/root/.ssh"
-	install -m600 "$SCHLUESSEL" "$MNT/root/.ssh/authorized_keys"
+	cp -a --preserve=all "$RFS/." "$MNT/"
+	install -Dm644 "$KBAU/vmlinuz-platte" "$MNT/efi/EFI/BOOT/BOOTX64.EFI"
 	cat >"$MNT/etc/fstab" <<-EOF
 		# <file system> <dir> <type> <options> <dump> <pass>
 		LABEL=usrside /home btrfs subvol=@home,compress=zstd 0 0
 		LABEL=ESP     /efi  vfat  noauto,umask=0077 0 2
 	EOF
-	printf 'usrside-%s\n' "$VARIANTE" >"$MNT/etc/hostname"
-	# /etc/issue ohne agetty-Escapes: BusyBox-getty kennt \S{PRETTY_NAME} nicht (Befund t1)
-	local osname
-	osname=$(sed -n 's/^PRETTY_NAME="\{0,1\}\([^"]*\)"\{0,1\}$/\1/p' "$MNT/etc/os-release" "$MNT/usr/lib/os-release" 2>/dev/null | head -n1)
-	printf '%s \\r (\\l)\n\n' "${osname:-UsrsideOS ($VARIANTE)}" >"$MNT/etc/issue"
-	sed -i 's|^#\?PermitRootLogin.*|PermitRootLogin prohibit-password|' "$MNT/etc/ssh/sshd_config"
-	# rcyay-dienste: Standard-Init für übersetzte Units (gewählt wird beim Start trotzdem per init=);
-	# ein vorhandener Eintrag bleibt, außer ABBILD_INIT ist gesetzt
-	if ! grep -q '^Init *=' "$MNT/etc/rcyay.conf" 2>/dev/null; then
-		printf 'Init = %s\n' "${ABBILD_INIT:-runit}" >>"$MNT/etc/rcyay.conf"
-	elif [[ -n ${ABBILD_INIT:-} ]]; then
-		sed -i "s/^Init *=.*/Init = $ABBILD_INIT/" "$MNT/etc/rcyay.conf"
-	fi
 	sync
+	abhaengen
+
+	local n=usrside-$VARIANTE
+	qemu-img convert -c -O qcow2 "$roh" "$AUS/$n.qcow2.neu"
+	mv "$AUS/$n.qcow2.neu" "$AUS/$n.qcow2"
+	install -m644 "$KBAU/vmlinuz-platte" "$AUS/$n.vmlinuz"
+	printf '%s\n' "$CMDLINE" >"$AUS/$n.cmdline"
+	beigaben "$n"
+	rm -f "$roh"
+	ls -l "$AUS"/"$n".*
+	meldung "Abbild fertig: $AUS/$n.qcow2"
 }
 
-ausgeben() {
-	local n=usrside-$VARIANTE tree commit
-	tree=$(<"$KBAU/baum")
-	qemu-img convert -c -O qcow2 "$KBAU/abbild.raw" "$AUS/$n.qcow2.neu"
-	mv "$AUS/$n.qcow2.neu" "$AUS/$n.qcow2"
-	install -m644 "$tree/arch/x86/boot/bzImage" "$AUS/$n.vmlinuz"
-	printf '%s\n' "$CMDLINE" >"$AUS/$n.cmdline"
-	if [[ -n $ROOTFS && -s $ROOTFS/usr/share/usrside/inits ]]; then
-		cp "$ROOTFS/usr/share/usrside/inits" "$AUS/$n.inits"
-	else
-		printf '%s\n' "busybox /usr/bin/init" "runit /usr/bin/runit-init" \
-			"s6 /etc/s6-linux-init/current/bin/init" >"$AUS/$n.inits"
-	fi
+# ---- Schritt 2b: Live (squashfs + Initramfs) ----
+initramfs() { # initramfs DATEI
+	local d=$KBAU/initramfs p
+	rm -rf "$d"
+	mkdir -p "$d"/{bin,lib,dev,proc,sys,run,neu} "$d/pakete"
+	# BusyBox + musl-Lader aus dem musl-Repo (busybox ist dynamisch gegen musl gebaut)
+	for p in busybox musl; do
+		local f
+		f=$(find "$BUSYBOX_REPO" -maxdepth 1 -name "$p-[0-9]*.pkg.tar.zst" | sort -V | tail -n1)
+		[[ -n $f ]] || abbruch "kein Paket $p in $BUSYBOX_REPO (zuerst VARIANTE=musl bootstrap/stage2)"
+		bsdtar -xf "$f" -C "$d/pakete"
+	done
+	install -m755 "$d/pakete/usr/bin/busybox" "$d/bin/busybox"
+	install -m755 "$(readlink -f "$d/pakete/usr/lib/libc.so")" "$d/lib/ld-musl-x86_64.so.1"
+	rm -rf "$d/pakete"
+	install -m755 "$BOOTSTRAP/live-init" "$d/init"
+	mknod -m 600 "$d/dev/console" c 5 1
+	mknod -m 666 "$d/dev/null" c 1 3
+	(cd "$d" && find . -print0 | LC_ALL=C sort -z | cpio --null -o -H newc --reproducible --quiet) |
+		zstd -q -19 -T0 >"$1.neu"
+	mv "$1.neu" "$1"
+}
+
+live() {
+	local n=usrside-$VARIANTE-live
+	# Live: keine Platten-Einträge in fstab (Wurzel ist overlayfs)
+	local fstab=$RFS/etc/fstab alt=""
+	[[ -e $fstab ]] && alt=$(<"$fstab")
+	printf '# <file system> <dir> <type> <options> <dump> <pass>\n' >"$fstab"
+	rm -f "$AUS/$n.squashfs.neu"
+	mksquashfs "$RFS" "$AUS/$n.squashfs.neu" -comp zstd -Xcompression-level 19 -b 1M -noappend -quiet \
+		-mkfs-time "$SOURCE_DATE_EPOCH" -all-time "$SOURCE_DATE_EPOCH" -e boot/vmlinuz-usrkrnl
+	mv "$AUS/$n.squashfs.neu" "$AUS/$n.squashfs"
+	if [[ -n $alt ]]; then printf '%s\n' "$alt" >"$fstab"; else rm -f "$fstab"; fi
+	install -m644 "$KBAU/vmlinuz-live" "$AUS/$n.vmlinuz"
+	initramfs "$AUS/$n.initramfs"
+	printf '%s\n' "$LIVE_CMDLINE" >"$AUS/$n.cmdline"
+	beigaben "$n"
+	ls -l "$AUS"/"$n".*
+	meldung "Live-Abbild fertig: $AUS/$n.squashfs (+ .vmlinuz .initramfs)"
+}
+
+beigaben() { # .inits und .commit
+	local commit
+	cp "$KBAU/inits" "$AUS/$1.inits"
 	commit=${ABBILD_COMMIT:-}
 	[[ -n $commit ]] || commit=$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null || true)
 	[[ -n $commit ]] || commit=$(git -c safe.directory='*' -C /root/rcyay rev-parse bootstrap 2>/dev/null || echo unbekannt)
-	printf '%s\n' "$commit" >"$AUS/$n.commit"
-	rm -f "$KBAU/abbild.raw"
-	ls -l "$AUS"/"$n".*
+	printf '%s\n' "$commit" >"$AUS/$1.commit"
 }
 
 # der Kernel hängt nicht von der Variante ab: eine Marke für musl und glibc
-FERTIG=$KBAU/fertig schritt abbild-kernel kernel
+# (-2: Live-Kernel ohne CMDLINE, USB/NVMe/exFAT fest eingebaut)
+FERTIG=$KBAU/fertig schritt abbild-kernel-2 kernel
 ((NUR_KERNEL)) && exit 0
-platte_anlegen
-installieren
-abhaengen
-ausgeben
-meldung "Abbild fertig: $AUS/usrside-$VARIANTE.qcow2"
+rootfs_bauen
+meldung "Rootfs fertig: $RFS"
+((PLATTE)) && platte
+((LIVE)) && live
+exit 0
