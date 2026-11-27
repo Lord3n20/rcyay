@@ -14,6 +14,7 @@
 #   usrside/repo/usrside-aur/   AUR-Pakete der Installer-Optionen fertig gebaut (ohne Browser; OFFLINE=1,
 #                             AUR_OHNE=browser), aur-commits.txt = Stand der AUR-git-Repos
 #   usrside/repo/usrside-musl/  musl-Repo von stage2 (für LIBC=musl)
+#   usrside/quellen/linux-VER.tar.xz  Kernel-Quelle für usrkrnl/setup im Zielsystem (offline, Prüfsumme aus quellen)
 #   usrside/commit, usrside/version
 # Im Live-System liegt das Medium unter /run/usrside/quelle (live-init; direkt wie Ventoy).
 # Umgebung:
@@ -118,7 +119,8 @@ spiegel() {
 		for k in "${!PKG[@]}"; do [[ " $OHNE " == *" $k "* ]] || p+=" ${PKG[$k]}"; done
 		echo "$p"' _ "$RFS/usr/share/usrside-installer/os/usrside.sh")
 	[[ -n $pakete ]] || abbruch "Paketliste des Installers leer"
-	pakete+=" $AUR_DEPS"
+	# usrkrnl/setup + DKMS im Zielsystem (Befund e1e): Bauwerkzeuge, die nicht ausdrücklich in BASE/KERNEL_PKGS stehen
+	pakete+=" $AUR_DEPS patch xz flex bison libelf ${OFFLINE_EXTRA:-}"
 	meldung "Offline-Spiegel: $pakete"
 	local P=(pacman --config "$konf" --dbpath "$w" -r "$r" --noconfirm --cachedir "$I/spiegel-cache")
 	"${P[@]}" -Sy >/dev/null
@@ -237,6 +239,16 @@ fi
 COMMIT=${ABBILD_COMMIT:-$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null ||
 	git -c safe.directory='*' -C /root/rcyay rev-parse bootstrap 2>/dev/null || echo unbekannt)}
 printf '%s\n' "$COMMIT" >"$BAUM/usrside/commit"
+# Kernel-Quelle für usrkrnl/setup im Zielsystem (offline, setup prüft die sha256 selbst): dieselbe Version wie der
+# Live-Kernel, Prüfsumme aus bootstrap/quellen
+KVER=$(basename "$(<"$KBAU/baum")")
+KVER=${KVER#linux-}
+KSUM=$(awk -v v="$KVER" '$1 == "linux" && $2 == v {print $3}' "$QUELLLISTE")
+KTAR=$QUELLEN/linux-$KVER.tar.xz
+[[ -n $KSUM && -s $KTAR ]] || abbruch "Kernel-Quelle linux-$KVER fehlt ($KTAR) oder nicht in $QUELLLISTE"
+[[ $(sha256sum "$KTAR" | cut -d' ' -f1) == "$KSUM" ]] || abbruch "Prüfsumme $KTAR falsch"
+mkdir -p "$BAUM/usrside/quellen"
+cp "$KTAR" "$BAUM/usrside/quellen/"
 printf 'UsrsideOS %s (glibc-Live, Init %s, Installer %s%s)\n' "$DATUM" "$INIT" "${INSTALLER_COMMIT:0:8}" \
 	"$( ((OFFLINE)) && echo ', offline' || true)" >"$BAUM/usrside/version"
 
