@@ -26,6 +26,8 @@ pkgconf            arch:3.0.11-1         7da09e48878ac80c201ea21ca173d2f881654db
 fakeroot           arch:2-1.37.2-1       38e0a5cfff81626015fce1790b39ad59641788965d59fe7b8c38beed4a29d317
 gmp                arch:6.3.0-3          266efdfcb179b1ba4d91b4fbee252b04da3e45a3ace8fd9f80fe55cfcfdc9ebe
 mpfr               arch:4.2.2-1          39c2b12653b3c8444d54ee718576b5a048164e757226c9f156a5db8868d306a7
+# gawk mit MPFR ersetzt den Vorbau-gawk (ohne MPFR fehlerhaft, overlay/gawk); vor busybox, damit awk = gawk
+gawk                 arch:5.4.1-1              6c7b46d2663b2054dfc5217ea01d129ba2c65b0d2f07fa68212cf308090e2f86
 libmpc             arch:1.4.1-1          9f0be01b4152bfea3711c54aadc3329f94385304b88bee386a94d2c9a2a0edee
 binutils           arch:2.47-4           df189ae6cbd47500f84186f2fb058c37dafbe667f063a55e4934a518080de3f4
 gcc                eigen

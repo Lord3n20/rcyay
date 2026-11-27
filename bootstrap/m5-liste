@@ -1,8 +1,6 @@
 # M5: musl-Quellbauten über stage2 hinaus (LISTE=m5-liste bootstrap/stage2), Format wie stage2-liste.
 # Reihenfolge aus bootstrap/m5-ordnung (Overlay-usrside_ohne berücksichtigt), Zeilen aus bootstrap/arch-eintrag.
 # Pakete, die auf musl nicht gehen: overlay/nur-glibc.txt.
-# gawk zuerst: ersetzt den Vorbau-gawk ohne MPFR (Fehler, siehe overlay/gawk)
-gawk                 arch:5.4.1-1              6c7b46d2663b2054dfc5217ea01d129ba2c65b0d2f07fa68212cf308090e2f86
 # Stufe 1: Wayland-Grundlage, seatd, foot
 default-cursors      arch:3-1                  f2af82481f4926b1a1541229172b4a05c3addd723ff11ff6d3840d608f74ca65
 expat                arch:2.10.0-1             18e85173596f5a5a5738fccdfb34ce58294ee16dc381434ce688e145a761e491
