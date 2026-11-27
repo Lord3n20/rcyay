@@ -66,3 +66,24 @@ pipewire             arch:1-1.6.11-2           33063a6823f939971c6cb35e4f177b00d
 wireplumber          arch:0.5.19-1             28ff4b48d6e8d865b8f919f5fa8fb8b7b40d2fcc1ad64946621d724ae6cee506
 # Stufe 2f: Arch-Version von rust aus Quellen (eigenes PKGBUILD, stage0 = rust-saat, llvm link-shared); ersetzt rust-saat
 rust                 eigen
+# Stufe 2g (Befund t1): Standard-Cursor (adwaita-cursors) und X11-Programme unter niri (xwayland-satellite + Xwayland ohne GL)
+adwaita-icon-theme   arch:51.0-1               c9150dd47be036787063f19d8e97330ed60340e861cabbb578eb05d880dc89e7
+xorgproto            arch:2026.1-1             daf0ce88ae23cbb69f7d015ecd220baaf6fff26410bb3148cde41f1a7293f9f7
+xcb-proto            arch:1.17.0-4             5797c17b6fdf08ce297ce9cd68598d68717016b23d73288aa7833eb23f444835
+libxau               arch:1.0.12-1             f0b41a16873624366627e24f5def598b5ca27f519c17d4684313bc63e4addc18
+libxdmcp             arch:1.1.5-2              c54dca2407d218831957da8a59623e260ef84cf8dd8ec081c3b4a95789620f5a
+libxcb               arch:1.17.0-1             7fde6d49ca90bb52f7d5e3277899f66bf89acc36ee20357d718c634e9b133e58
+xtrans               arch:1.6.0-1              aa2223291005d9219bdd0cbae3cd9d4630e41eb08595909e0771afd6e62037ba
+libx11               arch:1.8.14-1             7458111c70d256c15e223e893c1d6efb018f52051c6d712fd5b96e896d91a770
+libxkbfile           arch:1.2.0-1              987a5870b449fe3df58cdb209d43bfa9d079c3293791d32746aa60507b564606
+xorg-xkbcomp         arch:1.5.0-1              49bb582292ef67663b62ee3800bcb7476a1b3606166fa82aebafcfed03b589c3
+xorg-font-util       arch:1.4.2-1              2888ef92478739ebc57e65f121dda998d4ee8900c7db18263f35106744576831
+libfontenc           arch:1.1.10-1             ddfd04c8ecb33af74261ee1ee49181e5fad9203fa43687ff7e41f14160f32c4b
+libxfont2            arch:2.0.10-1             2d784e620252bd32ba932fcc6c638b0215db37043d9e32d39b3c3979684238bd
+libxcvt              arch:0.1.3-1              eee1b8709c64717f52f33232d2a6ec80536c4959010d1381b6a94e34664afd3b
+xorg-xwayland        arch:24.1.15-1            7e9a5b878a1604399d62ae260d43041f81cb59d9ef5d3e7b604c6c03cf2061b8
+xcb-util             arch:0.4.1-2              4254b0f46bf1e52de5a094f1fbb2a774cd9c250b2007eeed0a2462903d9554a6
+xcb-util-renderutil  arch:0.3.10-2             8579c76dc84ba7ada334d94007ebcc239614cf34d92fbbc1870f9ea704137d67
+xcb-util-image       arch:0.4.1-3              30959e333e464cf64929faf48eaff1d82dd6afd54b09fd26be3172dde9a46f33
+xcb-util-cursor      arch:0.1.6-1              a6d41d2bbf9ad0fb16435f74c931b95b896a24848955dc46e04c7cb7304081c0
+xwayland-satellite   arch:0.8.3-1              d5f46f2205641f094396703f1b77adbe165e4b03b3e77b24091e4ea733107078
