@@ -89,7 +89,7 @@ build() {
 	# makepkg.conf setzt RUSTFLAGS=-C target-feature=-crt-static für Fremdpakete; bootstrap steuert das selbst
 	unset CFLAGS CXXFLAGS LDFLAGS RUSTFLAGS
 	export RUST_BACKTRACE=1
-	DESTDIR="$srcdir/dest" python ./x.py install -j "$(getconf _NPROCESSORS_ONLN)"
+	DESTDIR="$srcdir/dest" python ./x.py install -j "$(nproc)"
 
 	# Rauchtest: der neue rustc/cargo baut ein Programm mit proc-macro (braucht dynamisches rustc)
 	local d=$srcdir/dest/usr t=$srcdir/rauch
