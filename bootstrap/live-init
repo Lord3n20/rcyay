@@ -5,6 +5,7 @@
 #   2. in einer ISO-Datei auf einer beliebigen Partition (exFAT/vfat/ext4/btrfs/iso9660 …, Ventoy-Stick),
 #      zuerst usrside.iso=PFAD, sonst *.iso bis Tiefe 3.
 # Dann squashfs (ro) + tmpfs (rw) als overlayfs → switch_root auf init= (Standard /usr/bin/init).
+# Im Live-System: /run/usrside/{medium,iso,ro,rw}, /run/usrside/quelle → Wurzel des Mediums (medium oder iso).
 # Kernel-Parameter: usrside.iso=/pfad/datei.iso  usrside.warte=SEKUNDEN (Standard 30)  usrside.debug (Shell bei Fehler)
 # shellcheck shell=sh
 /bin/busybox mkdir -p /proc /sys /dev /usr/bin /usr/sbin /sbin
@@ -17,7 +18,11 @@ SFS=usrside/rootfs.sfs
 LIVE=/run/usrside
 mkdir -p /run "$LIVE/medium" "$LIVE/iso" "$LIVE/ro" "$LIVE/rw" /neu
 
-say() { echo "usrside-live: $*" >/dev/console 2>&1 || echo "usrside-live: $*"; }
+# Meldungen auf die Konsole (bei console=…ttyS0 zuletzt die serielle) und zusätzlich auf den Bildschirm
+say() {
+	echo "usrside-live: $*" >/dev/console 2>&1 || echo "usrside-live: $*"
+	[ -c /dev/tty0 ] && echo "usrside-live: $*" >/dev/tty0 2>/dev/null
+}
 nothalt() {
 	say "FEHLER: $*"
 	if [ -n "$DEBUG" ]; then exec sh; fi
@@ -61,19 +66,19 @@ suchen() {
 	for g in $(geraete); do
 		medium "$g" || continue
 		if [ -f "$LIVE/medium/$SFS" ]; then
-			QUELLE="$LIVE/medium/$SFS"
+			QUELLE="$LIVE/medium/$SFS" WURZELDIR=medium
 			say "Rootfs auf $g"
 			return 0
 		fi
 		if [ -n "$ISO" ] && [ -f "$LIVE/medium/${ISO#/}" ] && iso_pruefen "$LIVE/medium/${ISO#/}"; then
-			QUELLE="$LIVE/iso/$SFS"
+			QUELLE="$LIVE/iso/$SFS" WURZELDIR=iso
 			say "Rootfs in $g:$ISO"
 			return 0
 		fi
 		find "$LIVE/medium" -maxdepth 3 -iname '*.iso' -type f 2>/dev/null >/run/isos
 		while IFS= read -r i; do
 			if iso_pruefen "$i"; then
-				QUELLE="$LIVE/iso/$SFS"
+				QUELLE="$LIVE/iso/$SFS" WURZELDIR=iso
 				say "Rootfs in $g:${i#"$LIVE"/medium}"
 				return 0
 			fi
@@ -83,7 +88,7 @@ suchen() {
 	return 1
 }
 
-QUELLE=""
+QUELLE="" WURZELDIR=""
 n=0
 until suchen; do
 	n=$((n + 1))
@@ -106,6 +111,9 @@ for d in medium iso ro rw; do
 	mkdir -p "/neu/run/usrside/$d"
 	mountpoint -q "$LIVE/$d" && mount --move "$LIVE/$d" "/neu/run/usrside/$d"
 done
+# fester Pfad zum Inhalt des Mediums (ISO-Wurzel), egal ob direkt (CD/dd-Stick) oder als ISO-Datei (Ventoy):
+# /run/usrside/quelle/usrside/{rootfs.sfs,arch/,repo/} – Offline-Repos des Installers
+ln -s "$WURZELDIR" /neu/run/usrside/quelle
 mount --move /dev /neu/dev
 umount /sys /proc
 exec switch_root /neu "$INIT"

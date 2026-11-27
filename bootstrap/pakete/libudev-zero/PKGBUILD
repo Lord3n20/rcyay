@@ -1,0 +1,33 @@
+# libudev-zero: libudev-Ersatz ohne udevd (wie KISS/Chimera-ähnliche Systeme); für libinput, niri (udev-rs), mesa
+pkgname=libudev-zero
+pkgver=1.0.3
+pkgrel=2
+pkgdesc='Daemonless replacement for libudev'
+arch=(x86_64)
+url='https://github.com/illiliti/libudev-zero'
+license=(ISC)
+depends=(musl)
+provides=(libudev libudev.so=1-64)
+source=("$pkgname-$pkgver.tar.gz::https://github.com/illiliti/libudev-zero/archive/$pkgver/libudev-zero-$pkgver.tar.gz"
+	0001-alsa-karten-aufzaehlen.patch)
+sha256sums=('0bd89b657d62d019598e6c7ed726ff8fed80e8ba092a83b484d66afb80b77da5'
+	'652d20e95a2206c2be8b2b0b010701d12518d05b0bb6dcc9f915341b9586b948')
+
+prepare() {
+	cd "$pkgname-$pkgver"
+	# ALSA-Karten (/sys/class/sound/cardN) mit aufzählen – sonst findet pipewire keine Karte
+	patch -Np1 -i ../0001-alsa-karten-aufzaehlen.patch
+}
+
+build() {
+	cd "$pkgname-$pkgver"
+	# Makefile nimmt CC=c99, das gibt es im chroot nicht
+	make CC=cc PREFIX=/usr
+}
+
+package() {
+	cd "$pkgname-$pkgver"
+	make CC=cc PREFIX=/usr DESTDIR="$pkgdir" install
+	rm -f "$pkgdir/usr/lib/libudev.a"
+	install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
+}

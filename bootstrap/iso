@@ -1,0 +1,264 @@
+#!/bin/bash
+# iso: Live-/Installer-ISO des puren UsrsideOS (M7). NUR in einer Arch-Bau-VM als root (losetup, chroot, pacman).
+#   bootstrap/iso [AUSGABEORDNER]                (Standard /root/aus)  →  usrside-AAAAMMTT.iso (+ .commit .sha256)
+# Aufbau des Mediums (UEFI, ohne BIOS; El Torito + GPT-hybrid, also auch per dd/Ventoy/CD):
+#   EFI-Abbild (El Torito, GPT-Partition 2) und ISO-Baum: EFI/BOOT/BOOTX64.EFI = Live-Kernel (usrkrnl, EFI-Stub)
+#       mit EINGEBAUTEM Initramfs (bootstrap/live-init, BusyBox musl) und eingebauter Befehlszeile ISO_CMDLINE –
+#       kein Bootlader, keine initrd-Datei; Ventoy startet dieselbe Datei aus dem ISO-Baum
+#   usrside/rootfs.sfs        glibc-Live-System (bootstrap/glibc-rootfs + abbild --nur-rootfs): rcyay, alle
+#                             vier Inits, Installer (/usr/share/usrside-installer, Befehl usrside-installieren),
+#                             Repo [usrside] in /srv/usrside, /boot/vmlinuz-usrkrnl = Kernel ohne Initramfs/cmdline
+#                             (Fallback-Kernel des Installers)
+#   usrside/arch/{core,extra,multilib}/   Offline-Spiegel: Arch-Datenbanken des Baustands + alle Pakete, die der
+#                             Installer ohne AUR braucht (OFFLINE=1); die mirrorlist des Live-Systems nennt ihn zuerst
+#   usrside/repo/usrside-aur/   AUR-Pakete der Installer-Optionen fertig gebaut (ohne Browser; OFFLINE=1,
+#                             AUR_OHNE=browser), aur-commits.txt = Stand der AUR-git-Repos
+#   usrside/repo/usrside-musl/  musl-Repo von stage2 (für LIBC=musl)
+#   usrside/commit, usrside/version
+# Im Live-System liegt das Medium unter /run/usrside/quelle (live-init; direkt wie Ventoy).
+# Umgebung:
+#   SCHLUESSEL   Test-ISO: authorized_keys für root (sshd läuft immer, ohne Schlüssel kein Zugang); Standard keiner
+#   INIT         Init des Live-Systems (runit, Standard; systemd|busybox|runit|s6)
+#   OFFLINE=0    ohne Offline-Spiegel (kleines ISO, Installation braucht Netz)
+#   OFFLINE_OHNE Optionen des Installers, deren Pakete nicht auf das Medium kommen (Standard: aus im Profil)
+#   INSTALLER    Ordner des Installers (Standard /root/usrsideos)   INSTALLER_REF  git-Ref (Standard usrside-os)
+#   ROOTFS       fertiges glibc-Rootfs (Standard: bootstrap/glibc-rootfs nach $ARBEIT/glibc/live-rootfs bauen)
+#   ISO_CMDLINE  Befehlszeile (Standard "console=tty0 console=ttyS0,115200 init=<INIT-Pfad>")
+#   MUSL_REPO    Standard $ARBEIT/musl/repo (fehlt es, ohne musl-Repo mit Warnung)
+# shellcheck disable=SC2016  # $repo (pacman) und das Teilskript sollen nicht expandieren
+set -euo pipefail
+export VARIANTE=glibc
+. "$(dirname "$0")/lib.sh"
+((EUID == 0)) || abbruch "iso braucht root"
+brauche xorriso mksquashfs mkfs.vfat mmd mcopy zstd cpio pacman repo-add git
+AUS=${1:-/root/aus}
+INIT=${INIT:-runit}
+OFFLINE=${OFFLINE:-1}
+OFFLINE_OHNE=${OFFLINE_OHNE-printing fish office games latex}
+INSTALLER=${INSTALLER:-/root/usrsideos}
+INSTALLER_REF=${INSTALLER_REF:-usrside-os}
+MUSL_REPO=${MUSL_REPO:-$ARBEIT/musl/repo}
+KBAU=$ARBEIT/usrkrnl
+I=$ARBEIT/iso
+BAUM=$I/baum
+DATUM=$(date -u +%Y%m%d)
+NAME=usrside-$DATUM
+mkdir -p "$AUS" "$I"
+case $INIT in systemd | busybox | runit | s6) ;; *) abbruch "INIT: systemd, busybox, runit oder s6" ;; esac
+
+# ---- 1. glibc-Rootfs (mit allem, was der Installer im Live-System braucht) ----
+LIVE_EXTRA="dialog dosfstools btrfs-progs xfsprogs efibootmgr iwd openresolv git"
+if [[ -z ${ROOTFS:-} ]]; then
+	ROOTFS=$ARBEIT/glibc/live-rootfs
+	FERTIG=$I/fertig schritt "iso-rootfs-$INIT" env INIT="$INIT" EXTRA="$LIVE_EXTRA ${EXTRA:-}" \
+		"$BOOTSTRAP/glibc-rootfs" "$ROOTFS"
+fi
+[[ -s $ROOTFS/usr/share/usrside/inits ]] || abbruch "$ROOTFS ist kein glibc-Rootfs (usr/share/usrside/inits fehlt)"
+INITPFAD=$(awk -v i="$INIT" '$1 == i {print $2; exit}' "$ROOTFS/usr/share/usrside/inits")
+[[ -n $INITPFAD ]] || abbruch "kein Pfad für $INIT in $ROOTFS/usr/share/usrside/inits"
+ISO_CMDLINE=${ISO_CMDLINE:-console=tty0 console=ttyS0,115200 init=$INITPFAD}
+
+# Kernel, Module und Grundeinstellungen wie beim Platten-Abbild; Schlüssel nur für die Test-ISO
+SCHLUESSEL=${SCHLUESSEL:-}
+[[ -z $SCHLUESSEL || -s $SCHLUESSEL ]] || abbruch "SCHLUESSEL=$SCHLUESSEL fehlt oder ist leer"
+SCHLUESSEL=${SCHLUESSEL:-/dev/null} "$BOOTSTRAP/abbild" --rootfs "$ROOTFS" --nur-rootfs "$AUS"
+RFS=$ARBEIT/glibc/abbild-rootfs
+[[ -n $SCHLUESSEL ]] || rm -f "$RFS/root/.ssh/authorized_keys"
+
+# ---- 2. Live-Einstellungen im Rootfs ----
+meldung "Live-Einstellungen"
+printf '# Live-System: / ist overlayfs (squashfs + tmpfs), keine Platten-Einträge\n' >"$RFS/etc/fstab"
+printf 'usrside-live\n' >"$RFS/etc/hostname"
+# root ohne Passwort an der Konsole (wie Arch-ISO); sshd lässt leere Passwörter nicht zu (PermitEmptyPasswords no)
+sed -i 's/^root:[^:]*:/root::/' "$RFS/etc/shadow"
+grep -q '^PermitEmptyPasswords yes' "$RFS/etc/ssh/sshd_config" && abbruch "sshd_config erlaubt leere Passwörter"
+# Installationskernel: ohne Initramfs und ohne eingebaute Befehlszeile (der Installer setzt root=… per efibootmgr)
+install -Dm644 "$KBAU/vmlinuz-live" "$RFS/boot/vmlinuz-usrkrnl"
+# Installer (Branch usrside-os) als Ordner + Befehl
+rm -rf "$RFS/usr/share/usrside-installer"
+mkdir -p "$RFS/usr/share/usrside-installer"
+git -c safe.directory='*' -C "$INSTALLER" archive "$INSTALLER_REF" | tar -x -C "$RFS/usr/share/usrside-installer"
+[[ -x $RFS/usr/share/usrside-installer/install && -f $RFS/usr/share/usrside-installer/os/usrside.sh ]] ||
+	abbruch "Installer unvollständig ($INSTALLER $INSTALLER_REF)"
+INSTALLER_COMMIT=$(git -c safe.directory='*' -C "$INSTALLER" rev-parse "$INSTALLER_REF")
+printf '%s\n' "$INSTALLER_COMMIT" >"$RFS/usr/share/usrside-installer/.commit"
+install -Dm755 /dev/stdin "$RFS/usr/local/bin/usrside-installieren" <<-'EOF'
+	#!/bin/bash
+	# UsrsideOS installieren (Menü; unbeaufsichtigt: usrside-installieren --answers DATEI)
+	exec /usr/share/usrside-installer/install "$@"
+EOF
+# Offline-Spiegel zuerst: gilt für pacman/rcyay im Live-System und für die pacman.conf des Installers
+# (Include = /etc/pacman.d/mirrorlist); fehlt eine Datei dort, nimmt pacman den nächsten Server
+ML=$RFS/etc/pacman.d/mirrorlist
+if ((OFFLINE)); then
+	sed -i '/usrside\/arch\/\$repo/d' "$ML"
+	sed -i '1i # Offline-Spiegel auf dem UsrsideOS-Medium (bootstrap/iso)\nServer = file:///run/usrside/quelle/usrside/arch/$repo' "$ML"
+fi
+cat >"$RFS/etc/motd" <<-EOF
+
+	UsrsideOS Live ($DATUM, Init $INIT) – Installation: usrside-installieren
+	Medium: /run/usrside/quelle   WLAN: iwctl   Kein Kennwort für root an der Konsole.
+
+EOF
+
+# ---- 3. Offline-Spiegel (Arch-Pakete für den Installer) ----
+spiegel() {
+	local d=$I/spiegel w=$I/spiegel-db r=$I/spiegel-wurzel konf=$I/spiegel.conf pakete
+	rm -rf "$d" "$w" "$r"
+	mkdir -p "$d"/{core,extra,multilib} "$w" "$r"/var/lib/pacman "$I/spiegel-cache"
+	# pacman.conf des Rootfs, [usrside] aus dem Rootfs, Arch über die mirrorlist des Bauwirts; ohne
+	# DownloadUser (alpm dürfte nicht in den eigenen Cache-Ordner schreiben)
+	sed -e "s|^Server = file:///srv/usrside|Server = file://$ROOTFS/srv/usrside|" -e '/^DownloadUser/d' \
+		"$ROOTFS/etc/pacman.conf" >"$konf"
+	# Paketliste aus dem Installer: BASE, Bau-/Kernel-Pakete, btrfs, Mikrocode, alle Optionen außer OFFLINE_OHNE
+	pakete=$(env -i PATH="$PATH" OHNE="$OFFLINE_OHNE" bash -c '
+		log() { :; }; warn() { :; }; die() { exit 1; }
+		. "$1"
+		p="${BASE[*]} ${BUILD_PKGS[*]} ${KERNEL_PKGS[*]} $FS_PKG_btrfs $FS_PKG_xfs $UCODE_INTEL $UCODE_AMD $SSH_PKG"
+		for k in "${!PKG[@]}"; do [[ " $OHNE " == *" $k "* ]] || p+=" ${PKG[$k]}"; done
+		echo "$p"' _ "$RFS/usr/share/usrside-installer/os/usrside.sh")
+	[[ -n $pakete ]] || abbruch "Paketliste des Installers leer"
+	pakete+=" $AUR_DEPS"
+	meldung "Offline-Spiegel: $pakete"
+	local P=(pacman --config "$konf" --dbpath "$w" -r "$r" --noconfirm --cachedir "$I/spiegel-cache")
+	"${P[@]}" -Sy >/dev/null
+	# alle Pakete samt Abhängigkeiten (leere lokale Datenbank → vollständige Hülle)
+	# shellcheck disable=SC2086
+	"${P[@]}" -Sw --needed $pakete >/dev/null
+	# shellcheck disable=SC2086
+	"${P[@]}" -Sp --print-format '%r %f' $pakete | sort -u >"$I/spiegel.liste"
+	local repo datei n=0
+	while read -r repo datei; do
+		case $repo in core | extra | multilib) ;; *) continue ;; esac # usrside liegt in /srv/usrside
+		[[ -f $I/spiegel-cache/$datei ]] || abbruch "Spiegel: $datei nicht geladen"
+		ln -f "$I/spiegel-cache/$datei" "$d/$repo/$datei" 2>/dev/null || cp "$I/spiegel-cache/$datei" "$d/$repo/"
+		n=$((n + 1))
+	done <"$I/spiegel.liste"
+	# Datenbanken unverändert von Arch (Signaturen der Pakete stehen darin)
+	for repo in core extra multilib; do
+		cp "$w/sync/$repo.db" "$d/$repo/$repo.db"
+	done
+	meldung "Offline-Spiegel: $n Pakete, $(du -sh "$d" | cut -f1)"
+}
+
+# AUR-Pakete der Installer-Optionen (ohne Browser und OFFLINE_OHNE) fertig gebaut als Repo usrside-aur;
+# gebaut auf dem Arch-Bauwirt (glibc wie das Ziel) mit makepkg als Nutzer bau, Bauabhängigkeiten per pacman
+AUR_DEPS=""
+aur_bauen() {
+	local d=$I/aur q=$I/aur-quellen liste n info
+	rm -rf "$d" "$q"
+	mkdir -p "$d" "$q"
+	chown "${NUTZER:-bau}" "$q"
+	liste=$(env -i PATH="$PATH" OHNE="$OFFLINE_OHNE ${AUR_OHNE-browser}" bash -c '
+		log() { :; }; warn() { :; }; die() { exit 1; }
+		. "$1"
+		for k in "${!AUR[@]}"; do [[ " $OHNE " == *" $k "* ]] || echo "${AUR[$k]}"; done' _ \
+		"$RFS/usr/share/usrside-installer/os/usrside.sh" | tr ' ' '\n' | sort -u)
+	: >"$d/aur-commits.txt"
+	for n in $liste; do
+		meldung "AUR: $n"
+		su -s /bin/bash "${NUTZER:-bau}" -c "git clone -q 'https://aur.archlinux.org/$n.git' '$q/$n'"
+		info=$(su -s /bin/bash "${NUTZER:-bau}" -c "cd '$q/$n' && makepkg --printsrcinfo")
+		local dep mdep
+		dep=$(awk -F' = ' '$1 ~ /^\tdepends$/ {print $2}' <<<"$info" | tr '\n' ' ')
+		mdep=$(awk -F' = ' '$1 ~ /^\t(makedepends|checkdepends)$/ {print $2}' <<<"$info" | tr '\n' ' ')
+		# Bauabhängigkeiten auf dem Wegwerf-Bauwirt; die Laufzeit-Abhängigkeiten kommen in den Spiegel
+		# shellcheck disable=SC2086
+		[[ -z $dep$mdep ]] || pacman -S --needed --noconfirm --asdeps $dep $mdep >/dev/null
+		AUR_DEPS+=" $dep"
+		su -s /bin/bash "${NUTZER:-bau}" -c "cd '$q/$n' && makepkg -f --nodeps --noconfirm --noprogressbar" ||
+			abbruch "AUR-Paket $n lässt sich nicht bauen"
+		cp "$q/$n"/*.pkg.tar.zst "$d/"
+		printf '%s %s\n' "$n" "$(git -c safe.directory='*' -C "$q/$n" rev-parse HEAD)" >>"$d/aur-commits.txt"
+	done
+	[[ -n $liste ]] || { warnung "keine AUR-Pakete"; return 0; }
+	repo-add -q "$d/usrside-aur.db.tar.zst" "$d"/*.pkg.tar.zst
+	meldung "Repo usrside-aur: $(find "$d" -maxdepth 1 -name "*.pkg.tar.zst" -printf "%f ")"
+}
+((OFFLINE)) && aur_bauen
+((OFFLINE)) && spiegel
+
+# ---- 4. Live-Kernel mit eingebautem Initramfs und eingebauter Befehlszeile ----
+efi_kernel() {
+	local tree llvm cpio=$I/live-init.cpio
+	tree=$(<"$KBAU/baum")
+	llvm=$(dirname "$(command -v clang)")/
+	# Initramfs wie abbild --squashfs (BusyBox + musl-Lader + live-init), hier unkomprimiert für INITRAMFS_SOURCE
+	BUSYBOX_REPO=${BUSYBOX_REPO:-$ARBEIT/musl/repo}
+	local d=$I/initramfs p f
+	rm -rf "$d"
+	mkdir -p "$d"/{bin,lib,dev,proc,sys,run,neu} "$d/pakete"
+	for p in busybox musl; do
+		f=$(find "$BUSYBOX_REPO" -maxdepth 1 -name "$p-[0-9]*.pkg.tar.zst" | sort -V | tail -n1)
+		[[ -n $f ]] || abbruch "kein Paket $p in $BUSYBOX_REPO"
+		bsdtar -xf "$f" -C "$d/pakete"
+	done
+	install -m755 "$d/pakete/usr/bin/busybox" "$d/bin/busybox"
+	install -m755 "$(readlink -f "$d/pakete/usr/lib/libc.so")" "$d/lib/ld-musl-x86_64.so.1"
+	rm -rf "$d/pakete"
+	install -m755 "$BOOTSTRAP/live-init" "$d/init"
+	mknod -m 600 "$d/dev/console" c 5 1
+	mknod -m 666 "$d/dev/null" c 1 3
+	(cd "$d" && find . -print0 | LC_ALL=C sort -z | cpio --null -o -H newc --reproducible --quiet) >"$cpio"
+	local cfg=$tree/.config
+	cp "$cfg" "$I/config.vorher"
+	"$tree/scripts/config" --file "$cfg" --enable CMDLINE_BOOL --set-str CMDLINE "$ISO_CMDLINE" \
+		--set-str INITRAMFS_SOURCE "$cpio" --enable INITRAMFS_COMPRESSION_ZSTD
+	make -C "$tree" LLVM="$llvm" LOCALVERSION= olddefconfig >/dev/null
+	grep -q "^CONFIG_INITRAMFS_SOURCE=\"$cpio\"" "$cfg" || abbruch "INITRAMFS_SOURCE nicht gesetzt"
+	make -C "$tree" LLVM="$llvm" LOCALVERSION= -j"$JOBS" bzImage
+	install -m644 "$tree/arch/x86/boot/bzImage" "$I/BOOTX64.EFI"
+	# Baum zurück auf die Konfiguration von abbild (Platte/Live bauen weiter darauf)
+	cp "$I/config.vorher" "$cfg"
+	make -C "$tree" LLVM="$llvm" LOCALVERSION= olddefconfig >/dev/null
+	meldung "EFI-Kernel: $(du -h "$I/BOOTX64.EFI" | cut -f1), cmdline: $ISO_CMDLINE"
+}
+efi_kernel
+
+# ---- 5. Medium zusammenstellen ----
+meldung "squashfs"
+rm -rf "$BAUM"
+mkdir -p "$BAUM/EFI/BOOT" "$BAUM/usrside"
+mksquashfs "$RFS" "$BAUM/usrside/rootfs.sfs" -comp zstd -Xcompression-level 19 -b 1M -noappend -quiet
+install -m644 "$I/BOOTX64.EFI" "$BAUM/EFI/BOOT/BOOTX64.EFI"
+if ((OFFLINE)); then
+	cp -al "$I/spiegel" "$BAUM/usrside/arch" 2>/dev/null || cp -a "$I/spiegel" "$BAUM/usrside/arch"
+	if [[ -s $I/aur/usrside-aur.db.tar.zst ]]; then
+		mkdir -p "$BAUM/usrside/repo"
+		cp -a "$I/aur" "$BAUM/usrside/repo/usrside-aur"
+	fi
+fi
+if [[ -s $MUSL_REPO/usrside-musl.db.tar.zst ]]; then
+	mkdir -p "$BAUM/usrside/repo"
+	cp -al "$MUSL_REPO" "$BAUM/usrside/repo/usrside-musl" 2>/dev/null || cp -a "$MUSL_REPO" "$BAUM/usrside/repo/usrside-musl"
+else
+	warnung "kein musl-Repo unter $MUSL_REPO – ISO ohne usrside/repo/usrside-musl"
+fi
+COMMIT=${ABBILD_COMMIT:-$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null || echo unbekannt)}
+printf '%s\n' "$COMMIT" >"$BAUM/usrside/commit"
+printf 'UsrsideOS %s (glibc-Live, Init %s, Installer %s%s)\n' "$DATUM" "$INIT" "${INSTALLER_COMMIT:0:8}" \
+	"$( ((OFFLINE)) && echo ', offline' || true)" >"$BAUM/usrside/version"
+
+# EFI-Abbild (vfat) für El Torito / GPT: nur der Kernel
+local_kb=$(($(stat -c %s "$I/BOOTX64.EFI") / 1024 + 2048))
+rm -f "$I/efi.img"
+mkfs.vfat -C -n USRSIDE_EFI "$I/efi.img" "$local_kb" >/dev/null
+mmd -i "$I/efi.img" ::/EFI ::/EFI/BOOT
+mcopy -i "$I/efi.img" "$I/BOOTX64.EFI" ::/EFI/BOOT/BOOTX64.EFI
+
+meldung "xorriso"
+rm -f "$AUS/$NAME.iso.neu"
+xorriso -as mkisofs -iso-level 3 -full-iso9660-filenames -joliet -joliet-long -rational-rock \
+	-volid "USRSIDE_$DATUM" -appid "UsrsideOS Live/Installer" -publisher "UsrsideOS" \
+	-partition_offset 16 \
+	-append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B "$I/efi.img" -appended_part_as_gpt \
+	-e --interval:appended_partition_2:all:: -no-emul-boot \
+	-o "$AUS/$NAME.iso.neu" "$BAUM" 2>&1 | grep -v '^xorriso : UPDATE' || true
+[[ -s $AUS/$NAME.iso.neu ]] || abbruch "xorriso hat kein ISO erzeugt"
+mv "$AUS/$NAME.iso.neu" "$AUS/$NAME.iso"
+ln -sf "$NAME.iso" "$AUS/usrside.iso"
+printf '%s\n' "$COMMIT" >"$AUS/$NAME.iso.commit"
+(cd "$AUS" && sha256sum "$NAME.iso" >"$NAME.iso.sha256")
+xorriso -indev "$AUS/$NAME.iso" -report_el_torito plain 2>/dev/null | grep -i 'el torito\|boot img' || true
+ls -l "$AUS/$NAME.iso"
+meldung "ISO fertig: $AUS/$NAME.iso ($(du -h "$AUS/$NAME.iso" | cut -f1)), Test-Schlüssel: $([[ -n $SCHLUESSEL ]] && echo ja || echo nein)"

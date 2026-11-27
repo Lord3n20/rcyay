@@ -34,6 +34,7 @@ Einstellungen (Umgebung, siehe `lib.sh`): `VARIANTE` (musl | glibc), `TC`, `ARBE
 | `arch-eintrag` | Pflege (Arch-Rechner): Listenzeile `NAME arch:TAG SHA` aus den Sync-Datenbanken |
 | `m5-ordnung` | Pflege: Bau-Reihenfolge für M5 aus den Sync-Datenbanken (depends des gebrauchten Teilpakets, makedepends je Basis, minus `usrside_ohne` des Overlays; `--warum NAME` zeigt die Kette zum Beschneiden) |
 | `m5-liste` | M5-Pakete (Stufe 1: gawk, bison, Wayland-Grundlage, xkb, Schriften, seatd, foot – 22 Pakete, in bau-e2 gebaut 27.11.) |
+| `iso` | M7: Live-/Installer-ISO (glibc-Live, EFI-Kernel mit eingebautem Initramfs, Offline-Spiegel, musl-Repo; Kopf = Hilfe) |
 | `kernel-krypto-test` | bootet einen Kernel mit Mini-Initramfs (`test/kernel-krypto.c` als /init) und prüft, was iwd vom Kernel braucht |
 
 ## Ablauf
@@ -89,6 +90,29 @@ Abhängigkeiten (Doku, Tests, Demos, X11, glib/ICU wo verzichtbar) per `usrside_
 
 - M5 Stufe 2 ff.: mesa, pipewire, niri, fish, kitty, chromium (Rust-Toolchain nötig, siehe unten).
 
+### ISO (M7, `bootstrap/iso`)
+
+In der Bau-VM als root: `SCHLUESSEL=/root/test.pub bootstrap/iso /root/aus` (Test-ISO; ohne SCHLUESSEL kein
+root-Schlüssel) → `usrside-AAAAMMTT.iso` + `.commit` + `.sha256`, Link `usrside.iso`.
+- **Start ohne Bootlader:** `EFI/BOOT/BOOTX64.EFI` ist der usrkrnl-Live-Kernel (EFI-Stub) mit eingebautem
+  Initramfs (`live-init`, `CONFIG_INITRAMFS_SOURCE`) und eingebauter Befehlszeile (`console=tty0 console=ttyS0,115200
+  init=…`). Er liegt im El-Torito-EFI-Abbild (= GPT-Partition 2, also auch per `dd` auf einen Stick) und im
+  ISO-Baum (Ventoy startet von dort). Nur UEFI, kein BIOS.
+- **Rootfs finden:** `live-init` sucht `usrside/rootfs.sfs` auf allen Geräten bzw. in `*.iso` auf allen Partitionen
+  (Ventoy-exFAT: Ventoy hängt bei einem ISO ohne GRUB-Konfiguration nichts ein, der Kernel findet die Datei selbst).
+  Im Live-System zeigt `/run/usrside/quelle` auf die Wurzel des Mediums.
+- **Live-System:** glibc-Rootfs (`glibc-rootfs` + `dialog dosfstools btrfs-progs xfsprogs efibootmgr iwd openresolv
+  git`), Installer aus Branch `usrside-os` unter `/usr/share/usrside-installer` (`usrside-installieren`),
+  root ohne Kennwort nur an der Konsole, `/boot/vmlinuz-usrkrnl` = Kernel ohne Initramfs/cmdline (Fallback-Kernel
+  des Installers). s6 als Live-Init hängt ein eigenes tmpfs über `/run` (dann fehlt `/run/usrside`) – Standard runit.
+- **Offline:** `usrside/arch/{core,extra,multilib}` = Arch-Datenbanken des Baustands (Paketsignaturen stehen darin)
+  + alle Pakete der Installer-Optionen außer `OFFLINE_OHNE` (Standard printing fish office games latex), samt
+  Abhängigkeiten. Die `mirrorlist` des Live-Systems nennt `file:///run/usrside/quelle/usrside/arch/$repo` zuerst –
+  damit nutzen pacman/rcyay im Live-System und die pacman.conf des Installers (`Include = mirrorlist`) das Medium,
+  online fällt pacman für Fehlendes auf den nächsten Server zurück. AUR-Pakete der Optionen (tuxedo-drivers-dkms …) liegen
+  fertig gebaut in `usrside/repo/usrside-aur` (Repo mit Datenbank, gebaut auf dem Arch-Bauwirt, Stand der AUR-git-Repos
+  in `aur-commits.txt`; Laufzeit-Abhängigkeiten im Spiegel); der Browser (ungoogled-chromium-bin) bleibt offline weg. `OFFLINE=0` → kleines ISO.
+
 ### Gelöst: fakeroot auf musl (27.11.)
 musl exportiert `__xstat`, `__lxstat`, `__fxstat`, `__fxstatat`, `__xmknod(at)` nur als glibc-Kompatibilitätssymbole;
 `stat()` & Co. rufen sie nicht auf. fakeroots configure findet sie zuerst und wickelt dann *nur* sie ein → libarchive
@@ -103,8 +127,12 @@ hmac(…), cmac(aes), ecb/cbc/ctr(aes), ecb(des), cbc(des3_ede), ecb(arc4); keyc
 asymmetrische Schlüssel X.509 und PKCS#8 + PKEY_QUERY. Abbild-Kernel 2 (26.11.): alles da außer ecb(arc4) →
 ab abbild-kernel-3 `CRYPTO_ARC4`, `CRYPTO_USER_API_ENABLE_OBSOLETE`, `CRYPTO_CTR` im Fragment.
 Abbild-Kernel 3 (27.11., Abbild f564bd53): alles ok **außer weiterhin ecb(arc4)** (bind → ENOENT), obwohl
-`CRYPTO_ARC4=y`, `ECB=y`, `USER_API_ENABLE_OBSOLETE=y` gesetzt und arc4.o gebaut ist (arc4 ist seit 6.x ein lskcipher,
-`ecb(arc4)` entsteht über die ecb-Vorlage) – offen. Betrifft in iwd nur TKIP/WPA1 und alte EAP-Verfahren, WPA2/WPA3 nicht.
+`CRYPTO_ARC4=y`, `ECB=y`, `USER_API_ENABLE_OBSOLETE=y` gesetzt und arc4.o gebaut ist.
+**Ursache (27.11.):** Seit Linux 7.3 lässt AF_ALG nur eine feste Liste zu (`crypto/algif_skcipher.c` `skcipher_allowlist`,
+sysctl `crypto.af_alg_restrict`, Vorgabe 1); `ecb(arc4)` steht nicht darauf, `af_alg_check_restriction()` liefert absichtlich
+ENOENT. Entscheidung: Vorgabe 1 bleibt (AF_ALG ist eine häufige Lückenquelle); TKIP/WPA1 und alte EAP-Verfahren in iwd gehen
+damit nicht, WPA2/WPA3 schon. Wer WPA1 braucht: `sysctl crypto.af_alg_restrict=0`. Der Test erwartet deshalb ENOENT bei
+restrict=1 und prüft zusätzlich mit restrict=0, dass der Kernel `ecb(arc4)` wirklich hat (Fragment bleibt).
 
 ### Inits im Abbild (Paket `usrside-dienste`)
 Alle drei liegen im selben Abbild, gewählt wird mit `init=`:
@@ -134,7 +162,14 @@ Die Dienstdateien sind bewusst statisch; sobald `rcyay-dienste` (M2) sie aus sys
 | Python ohne `_ssl` im Vorbau | Python 3.14.10 nutzt noch `TLSv1_method`, das OpenSSL 4 nicht mehr hat; meson braucht kein ssl. |
 | gcc: zwei awk-Stellen umgeschrieben | gawk 5.4.1 auf musl: ein Feldelement, das nur in `arr[x] == ""` angefasst wurde, wird beim Anhängen zu `"0"` (`e[k] == ""; e[k] = e[k] "a"` → `0a`; gleiches gawk auf glibc → `a`; kein Optimierungs-/PMA-Effekt). gcc's `opt-gather.awk`/`optc-gen.awk` treffen genau das; `pakete/gcc` prüft dort mit `j > 1` bzw. `in`. BusyBox awk ist keine Alternative (frisst `\\+` im gsub-Ersatz → `CL_CXX` fehlt). **Ursache (27.11.):** kein musl-Fehler, sondern gawk 5.4.1 ohne MPFR (`--without-mpfr`, so baut der Vorbau) – auf glibc genauso (`BEGIN{z[1]; print "[" z[1] "]"}` → `[0]`). M5 baut deshalb zuerst Arch-gawk mit MPFR (`overlay/gawk`); traf auch libpng (`pnglibconf.h`). |
 | Kernel nicht als Paket | usrkrnl ist absichtlich ein maschinenbezogener Bau (`usrkrnl/setup`), kein generisches Paket; das Abbild bekommt ihn direkt. |
-| Rust (niri, fish ≥ 4, M5 Stufe 2) | rustc lässt sich nicht ohne vorhandenes rustc bauen; Saat ist das offizielle `x86_64-unknown-linux-musl`-Toolchain-Archiv von static.rust-lang.org (feste sha256), damit wird Arch-`rust` aus Quellen gebaut (wie Alpine/Chimera). |
+| Rust (niri, fish ≥ 4, M5 Stufe 2) | rustc lässt sich nicht ohne vorhandenes rustc bauen; Saat ist das offizielle `x86_64-unknown-linux-musl`-Toolchain-Archiv von static.rust-lang.org (feste sha256, eigenes Paket `rust-saat` 1.100.0, provides rust/cargo). fish und niri werden zunächst direkt damit gebaut; Arch-`rust` aus Quellen braucht llvm und folgt mit Stufe 2c. `makepkg.conf`: `RUSTFLAGS=-C target-feature=-crt-static` (das musl-Ziel linkt sonst statisch). Crates lädt cargo nach `Cargo.lock` (dort mit Prüfsummen). |
+| `libudev-zero` statt systemd-libudev | kein udevd auf dem musl-System; libinput/niri/mesa brauchen nur die libudev-API. Hotplug ohne udevd: Helfer aus `contrib/` (mdev) – noch offen. Patches: libudev-zero zählt auch `/sys/class/sound/cardN` auf (haben keinen dev-Eintrag), pipewire verlangt kein `SOUND_INITIALIZED` (setzt nur eine udev-Regel). |
+| mesa ohne LLVM (Stufe 2b) | iris/crocus/anv (Intel), llvmpipe und rusticl brauchen CLC = LLVM + clang + libclc + SPIRV-LLVM-Translator. Stufe 2b baut nur virgl (VM) + softpipe, ohne GLX/X11/libglvnd/Vulkan/VA; die Python-Bauhelfer (mako, markupsafe, packaging, pyyaml) kommen als Quell-Tarballs über PYTHONPATH. Echte Intel-Grafik auf musl erst mit llvm (2c). |
+| `llvm` als eigenes PKGBUILD (ein Paket, Stufe 2d) | Arch-`llvm` baut aus `llvm-project` 18 Pakete (lldb, polly, bolt, openmp, offload, libc++, libclc, wasi-*, 32-Bit-compiler-rt) und braucht dafür swig, sphinx, lib32-gcc-libs, wasi-libc und spirv-llvm-translator (das selbst llvm braucht). Hier: dieselbe Quelle/Prüfsumme 23.1.5, nur llvm + clang + lld, Ziele X86/AMDGPU/SPIRV, `provides` llvm-libs/clang/clang-libs/lld. libclc und compiler-rt folgen bei Bedarf (mesa iris). |
+| `ttf-dejavu` aus dem Upstream-TTF-Release 2.37 | Arch erzeugt die TTF-Dateien mit fontforge + perl-font-ttf aus dem git-Stand (2.37+18). Für reine Schriftdaten wäre fontforge (Python, GTK-frei, aber groß) ein eigener Baum; das Release-Archiv der Schriftautoren hat eine feste sha256. Versionsnummer bleibt die von Arch. |
+| niri ohne Standard-Features | `dbus`, `systemd`, `xdp-gnome-screencast` (pipewire) aus: kein D-Bus/logind auf musl; Bildschirmfreigabe folgt mit dbus + pipewire (2c). |
+| cmake mit gebündelten Kleinbibliotheken | jsoncpp, libuv, rhash, cppdap, nghttp2 aus dem cmake-Quellbaum statt eigener Pakete; ohne cmake-gui (Qt), Sphinx-Doku, Emacs-Modus. |
+| kitty zurückgestellt | braucht Go (zweite Saat-Toolchain), ein paketiertes Python zur Laufzeit, X11-Bibliotheken zum Bauen, shader-slang/simde; foot ist das Terminal der musl-Variante. Nicht „nur glibc“, nur später. |
 | HTTPS mit BusyBox-wget | BusyBox-TLS prüft keine Zertifikate; für Downloads mit Prüfung nimmt rcyay/makepkg curl. |
 
 ## Quellen und Vertrauen

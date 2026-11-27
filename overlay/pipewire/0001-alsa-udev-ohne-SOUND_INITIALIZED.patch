@@ -1,0 +1,12 @@
+--- a/spa/plugins/alsa/alsa-udev.c	2026-11-27 03:35:42.018871938 +0100
++++ b/spa/plugins/alsa/alsa-udev.c	2026-11-27 03:35:42.044649369 +0100
+@@ -165,8 +165,7 @@
+ 	if ((str = udev_device_get_property_value(udev_device, "SOUND_CLASS")) && spa_streq(str, "modem"))
+ 		return SPA_ID_INVALID;
+ 
+-	if (udev_device_get_property_value(udev_device, "SOUND_INITIALIZED") == NULL)
+-		return SPA_ID_INVALID;
++	/* usrside: libudev-zero (kein udevd) setzt SOUND_INITIALIZED nie – die Karte ist da, sobald sie in /sys steht */
+ 
+ 	if ((str = udev_device_get_property_value(udev_device, "DEVPATH")) == NULL)
+ 		return SPA_ID_INVALID;

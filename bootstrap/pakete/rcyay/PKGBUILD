@@ -2,7 +2,7 @@
 # rcyay-src.tar.gz und rcyay.ver neben dieses PKGBUILD)
 pkgname=rcyay
 pkgver=$(cat rcyay.ver 2>/dev/null || echo 7.1.0)
-pkgrel=1
+pkgrel=2
 pkgdesc='Package manager of UsrsideOS: pacman fork that also builds from the AUR'
 arch=(x86_64)
 url='https://github.com/Lord3n20/rcyay'

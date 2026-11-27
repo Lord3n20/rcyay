@@ -1,0 +1,92 @@
+#!/bin/bash
+# grafik-test (rcyay-e2, 27.11.2026): M5-Abbild mit virtio-gpu (virgl über egl-headless) booten, seatd + niri
+# (+ Ton: virtio-snd, pipewire/wireplumber/pipewire-pulse)
+# als root starten, foot als erstes Fenster, Bildschirmfoto. Läuft auf dem Wirt (ist eine VM!).
+#   bootstrap/test/grafik-test [ABBILD_DIR]   (Standard ~/vm/rcyay/vms/bau-e2/aus, Variante musl, Init runit)
+# Umgebung: GT_PORT (2236; 2226 hat pruef), GT_WPDEBUG (wireplumber-Log, 2), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
+set -uo pipefail
+A=${1:-$HOME/vm/rcyay/vms/bau-e2/aus}
+PORT=${GT_PORT:-2236} INIT=${GT_INIT:-runit} CPUS=${GT_CPUS:-16-19}
+AUS=${GT_AUS:-$HOME/vm/logs/rcyay-grafik}
+W=$(mktemp -d "${TMPDIR:-/tmp}/grafik-test.XXXXXX")
+KEY=$HOME/vm/id_vm
+mkdir -p "$AUS"
+ZEIT=$(date +%Y%m%d-%H%M%S)
+LOG=$AUS/grafik-$ZEIT.log
+FEHLER=0
+s() { ssh -q -i "$KEY" -p "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 root@127.0.0.1 "$@"; }
+ok() { echo "OK   $*" | tee -a "$LOG"; }
+bad() { echo "FEHL $*" | tee -a "$LOG"; FEHLER=$((FEHLER + 1)); }
+chk() { # chk TEXT BEFEHL
+	local out
+	if out=$(s "$2" 2>&1); then ok "$1: $(tr '\n' ' ' <<<"$out" | cut -c1-200)"; else bad "$1: $(tr '\n' ' ' <<<"$out" | cut -c1-300)"; fi
+}
+# shellcheck disable=SC2329
+aufraeumen() {
+	[[ -s $W/qemu.pid ]] && kill "$(cat "$W/qemu.pid")" 2>/dev/null
+	sleep 1
+	cp -f "$W/serial.log" "$AUS/grafik-$ZEIT.serial" 2>/dev/null
+	rm -rf "$W"
+}
+trap aufraeumen EXIT
+
+[[ -e $HOME/vm/akku-stop ]] && { echo "akku-stop: kein VM-Start"; exit 2; }
+IP=/usr/bin/runit-init
+[[ -f $A/usrside-musl.inits ]] && { p=$(awk -v i="$INIT" '$1==i{print $2}' "$A/usrside-musl.inits"); [[ -n $p ]] && IP=$p; }
+CMD=$(head -n1 "$A/usrside-musl.cmdline" 2>/dev/null || echo "root=/dev/vda2 rootfstype=btrfs rootflags=subvol=@ rw")
+RN=$(find /dev/dri -name 'renderD*' 2>/dev/null | sort | head -n1)
+echo "Abbild $A ($(cat "$A/usrside-musl.commit" 2>/dev/null)), init=$IP, rendernode=$RN" | tee "$LOG"
+qemu-img create -q -f qcow2 -F qcow2 -b "$A/usrside-musl.qcow2" "$W/disk.qcow2"
+nice -n 19 taskset -c "$CPUS" qemu-system-x86_64 -name grafik-test -enable-kvm -machine q35 -cpu host -smp 4 -m 4G \
+	-drive file="$W/disk.qcow2",if=virtio,cache=unsafe \
+	-kernel "$A/usrside-musl.vmlinuz" -append "$CMD init=$IP console=ttyS0,115200 panic=-1" -no-reboot \
+	-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:"$PORT"-:22 \
+	-device virtio-vga-gl -display egl-headless${RN:+,rendernode=$RN} \
+	-device virtio-keyboard-pci -device virtio-tablet-pci \
+	-audiodev none,id=ton -device virtio-sound-pci,audiodev=ton \
+	-serial file:"$W/serial.log" -pidfile "$W/qemu.pid" -daemonize || { bad "qemu startet nicht"; exit 1; }
+for i in $(seq 120); do
+	s true 2>/dev/null && { ok "SSH nach $((i * 2)) s"; break; }
+	((i == 120)) && { bad "kein SSH: $(tail -n 10 "$W/serial.log" | tr -d '\r' | tr '\n' '|')"; exit 1; }
+	sleep 2
+done
+
+chk "DRM-Gerät virtio_gpu" "ls /dev/dri; readlink /sys/class/drm/card0/device/driver | grep virtio"
+chk "Eingabegeräte (evdev)" "ls /dev/input/event*"
+chk "Schriften vorhanden" "fc-list | head -n3; [ -n \"\$(fc-list)\" ]"
+chk "seatd läuft (sonst starten)" "pgrep -x seatd || { setsid seatd -g video >/tmp/seatd.log 2>&1 < /dev/null & sleep 2; pgrep -x seatd; }"
+s 'mkdir -p /root/.config/niri /run/user/0 && chmod 700 /run/user/0 && cat >/root/.config/niri/config.kdl' <<'EOF'
+spawn-at-startup "foot"
+hotkey-overlay {
+    skip-at-startup
+}
+EOF
+chk "niri startet" "export XDG_RUNTIME_DIR=/run/user/0 RUST_LOG=info; setsid niri >/tmp/niri.log 2>&1 < /dev/null & sleep 15; pgrep -x niri"
+chk "foot läuft" "pgrep -x foot"
+chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\$(ls /run/user/0/niri*.sock | head -n1); niri msg windows"
+chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n5; grep -qi virgl /tmp/niri.log"
+# Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
+chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
+chk "SPA-ALSA-Plugin" "ls /usr/lib/spa-0.2/ /usr/lib/spa-0.2/alsa/ | tr '\\n' ' '; ls /usr/lib/libudev.so*"
+chk "pipewire + wireplumber starten" "export XDG_RUNTIME_DIR=/run/user/0; eval \$(dbus-daemon --session --fork --print-address=1 | sed 's/^/export DBUS_SESSION_BUS_ADDRESS=/'); env | grep DBUS_SESSION >/run/user/0/dbus.env;
+	setsid pipewire >/tmp/pw.log 2>&1 </dev/null & sleep 2; WIREPLUMBER_DEBUG=${GT_WPDEBUG:-2} setsid wireplumber >/tmp/wp.log 2>&1 </dev/null & setsid pipewire-pulse >/tmp/pwp.log 2>&1 </dev/null & sleep 5; pgrep -x pipewire && pgrep -x wireplumber && pgrep -f pipewire-pulse"
+chk "wpctl: ALSA-Sink (nicht Dummy)" "export XDG_RUNTIME_DIR=/run/user/0; wpctl status | sed -n '/Audio/,/Video/p' | head -n 20; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -m2 -E 'node.name|alsa'; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q alsa_output"
+chk "Pulse-Socket" "ls /run/user/0/pulse/native"
+s 'cat /tmp/pw.log /tmp/wp.log /tmp/pwp.log' >"$AUS/grafik-$ZEIT.ton.log" 2>&1
+s 'tail -n 40 /tmp/niri.log' >"$AUS/grafik-$ZEIT.niri.log" 2>&1
+s 'dmesg' >"$AUS/grafik-$ZEIT.dmesg" 2>&1
+# Bildschirmfoto über niri selbst (qemu-screendump hat bei GL-Scanout mit egl-headless „no surface“)
+# shellcheck disable=SC2016 # läuft im Gast
+s 'export XDG_RUNTIME_DIR=/run/user/0 NIRI_SOCKET=$(ls /run/user/0/niri*.sock | head -n1); rm -rf /root/Pictures/Screenshots;
+	niri msg action screenshot-screen >/dev/null; sleep 3; ls -t /root/Pictures/Screenshots/*.png | head -n1' >"$W/foto" 2>>"$LOG"
+f=$(head -n1 "$W/foto")
+if [[ -n $f ]] && scp -q -i "$KEY" -P "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	"root@127.0.0.1:$f" "$AUS/grafik-$ZEIT.png" && [[ -s $AUS/grafik-$ZEIT.png ]]; then
+	ok "Bildschirmfoto $AUS/grafik-$ZEIT.png"
+else
+	bad "kein Bildschirmfoto ($(cat "$W/foto"))"
+fi
+s 'poweroff' >/dev/null 2>&1
+sleep 5
+echo "FEHLER: $FEHLER (Log $LOG)" | tee -a "$LOG"
+exit $((FEHLER > 0))

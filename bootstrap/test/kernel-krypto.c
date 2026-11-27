@@ -77,6 +77,61 @@ static void chiffre(const char *name, size_t klen)
 		close(op);
 }
 
+/* ecb(arc4) (iwd: TKIP/WPA1): Linux ≥ 7.3 sperrt AF_ALG-Algorithmen außerhalb einer Liste
+ * (sysctl crypto.af_alg_restrict=1, Vorgabe) → ENOENT ist dann erwartet. Geprüft wird, dass der
+ * Kernel ecb(arc4) hat: Sperre kurz auf 0, binden, Sperre zurück. */
+static int restrict_lesen(void)
+{
+	int f = open("/proc/sys/crypto/af_alg_restrict", O_RDONLY), w = -1;
+	char b[8] = "";
+
+	if (f >= 0) {
+		if (read(f, b, sizeof(b) - 1) > 0)
+			w = atoi(b);
+		close(f);
+	}
+	return w;
+}
+
+static int restrict_setzen(int w)
+{
+	int f = open("/proc/sys/crypto/af_alg_restrict", O_WRONLY), ok;
+	char b[4];
+
+	if (f < 0)
+		return 0;
+	snprintf(b, sizeof(b), "%d\n", w);
+	ok = write(f, b, strlen(b)) == (ssize_t)strlen(b);
+	close(f);
+	return ok;
+}
+
+static void arc4(void)
+{
+	unsigned char key[16] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16 };
+	int alt = restrict_lesen(), op = alg("skcipher", "ecb(arc4)", key, 16);
+
+	if (op >= 0) {
+		close(op);
+		ergebnis("skcipher ecb(arc4)", 1, 0);
+		return;
+	}
+	if (op != -ENOENT || alt != 1) {
+		ergebnis("skcipher ecb(arc4)", 0, -op);
+		return;
+	}
+	printf("%-34s %s\n", "skcipher ecb(arc4)", "gesperrt (af_alg_restrict=1, erwartet)");
+	if (!restrict_setzen(0)) {
+		ergebnis("af_alg_restrict=0 setzen", 0, errno);
+		return;
+	}
+	op = alg("skcipher", "ecb(arc4)", key, 16);
+	restrict_setzen(alt);
+	ergebnis("skcipher ecb(arc4) bei restrict=0", op >= 0, -op);
+	if (op >= 0)
+		close(op);
+}
+
 /* Bekannte Antwort: sha256("abc") */
 static void sha256_abc(void)
 {
@@ -180,6 +235,8 @@ int main(int argc, char **argv)
 	if (getpid() == 1) {
 		mkdir("/dev", 0755);
 		mount("devtmpfs", "/dev", "devtmpfs", 0, NULL);
+		mkdir("/proc", 0755);
+		mount("proc", "/proc", "proc", 0, NULL);
 		int fd = open("/dev/console", O_RDWR);
 		if (fd >= 0) {
 			dup2(fd, 1);
@@ -208,7 +265,7 @@ int main(int argc, char **argv)
 	chiffre("ctr(aes)", 16);
 	chiffre("ecb(des)", 8);
 	chiffre("cbc(des3_ede)", 24);
-	chiffre("ecb(arc4)", 16);
+	arc4();
 	dh();
 	if (argc > 2)
 		asymmetrisch(argv[1], argv[2]);
