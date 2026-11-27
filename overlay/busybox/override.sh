@@ -1,3 +1,5 @@
+# pkgrel 5 (27.11.): lsblk/blkid/mount … gehören util-linux
+pkgrel=5
 # dynamisch gegen musl (nicht musl-gcc); Applet-Links für alles, was kein anderes Basispaket liefert
 # GNU sed gibt es nicht als Paket: das Applet erfüllt die Abhängigkeit (fakeroot)
 provides=(sed)
@@ -19,7 +21,9 @@ package() {
 	install -Dm644 .config "$pkgdir/usr/share/doc/$pkgname/config"
 	local l
 	# diese Namen liefern andere Pakete (bash, xz, bzip2, patch, usrside-dienste …)
-	local andere=" sh bash patch xz unxz xzcat lzma unlzma lzcat bzip2 bunzip2 bzcat poweroff reboot halt "
+	# lsblk … swapoff: volle Fassungen aus util-linux (Installer, usrkrnl); fehlt util-linux, legt usrside-busybox
+	# die Links an (Hook, freie Pfade)
+	local andere=" sh bash patch xz unxz xzcat lzma unlzma lzcat bzip2 bunzip2 bzcat poweroff reboot halt lsblk blkid findfs mount umount losetup fdisk mkswap swapon swapoff "
 	while read -r l; do
 		l=${l##*/}
 		[[ $andere == *" $l "* || $l == busybox || $l == linuxrc ]] && continue

@@ -1,7 +1,7 @@
 # Release-Tarball statt git; ohne PAM (login, su, runuser, chfn/chsh bleiben weg – BusyBox login/su),
-# ohne systemd/udev-Regeln, Python-Bindung und lastlog2 (sqlite). Was BusyBox schon liefert (mount, blkid,
-# fdisk, kill, more …), bleibt bei BusyBox (usrside_busybox_doppelte); dazu kommen agetty, findmnt, lsblk,
-# sfdisk, wipefs, losetup … und die Bibliotheken (libblkid/libuuid für btrfs-progs).
+# ohne systemd/udev-Regeln, Python-Bindung und lastlog2 (sqlite). Was BusyBox schon liefert (kill, more, dmesg …),
+# bleibt bei BusyBox (usrside_busybox_doppelte), außer _usrside_ul_vorrang (lsblk, blkid, mount …); dazu kommen
+# agetty, findmnt, sfdisk, wipefs … und die Bibliotheken (libblkid/libuuid für btrfs-progs).
 usrside_tarball https://www.kernel.org/pub/linux/utils/util-linux/v${pkgver%.*}/util-linux-$pkgver.tar.xz \
 	fbd62a100ab7bb8746ba0661255c3c48185b1e9021507c624da01fbc696330ec util-linux util-linux-$pkgver
 source=("${source[0]}") sha256sums=("${sha256sums[0]}")
@@ -10,6 +10,8 @@ unset validpgpkeys
 usrside_ohne git asciidoctor bash-completion libcap-ng libxcrypt po4a python sqlite systemd pam shadow coreutils \
 	file libmagic.so libcrypt.so
 prepare() { :; }
+# diese Namen liefert util-linux statt BusyBox (Liste auch in overlay/busybox)
+_usrside_ul_vorrang="lsblk blkid findfs mount umount losetup fdisk mkswap swapon swapoff"
 build() {
 	arch-meson util-linux build -Dfs-search-path=/usr/bin:/usr/local/bin -Dlibuser=disabled \
 		-Dlibutempter=disabled -Dncurses=disabled -Dncursesw=enabled -Deconf=disabled \
@@ -32,7 +34,8 @@ package_util-linux() {
 	mv "$pkgdir"/usr/lib/pkgconfig util-linux-libs/lib/pkgconfig
 	mv "$pkgdir"/usr/include util-linux-libs/include
 	if [[ -d $pkgdir/usr/share/man/man3 ]]; then mv "$pkgdir"/usr/share/man/man3 util-linux-libs/man3; fi
-	usrside_busybox_doppelte
+	# volle Fassungen für Installer/usrkrnl (lsblk -o, blkid -s/-o, mount -o subvol …)
+	usrside_busybox_doppelte $_usrside_ul_vorrang
 	# sbin-Programme legt meson nach /usr/bin (--sbindir bin); leere Ordner weg
 	find "$pkgdir" -depth -type d -empty -delete
 	install -vDm644 util-linux/Documentation/licenses/COPYING.{BSD*,ISC} -t "$pkgdir/usr/share/licenses/$pkgname/"
