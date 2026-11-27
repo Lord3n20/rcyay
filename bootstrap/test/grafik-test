@@ -3,7 +3,7 @@
 # (+ Ton: virtio-snd, pipewire/wireplumber/pipewire-pulse)
 # als root starten, foot als erstes Fenster, Bildschirmfoto. Läuft auf dem Wirt (ist eine VM!).
 #   bootstrap/test/grafik-test [ABBILD_DIR]   (Standard ~/vm/rcyay/vms/bau-e2/aus, Variante musl, Init runit)
-# Umgebung: GT_PORT (2236; 2226 hat pruef), GT_WPDEBUG (wireplumber-Log, 2), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
+# Umgebung: GT_PORT (2236; 2226 hat pruef), GT_WPDEBUG (wireplumber-Log, 2), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_GL (virgl | llvmpipe), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
 set -uo pipefail
 A=${1:-$HOME/vm/rcyay/vms/bau-e2/aus}
 PORT=${GT_PORT:-2236} INIT=${GT_INIT:-runit} CPUS=${GT_CPUS:-16-19}
@@ -37,11 +37,14 @@ CMD=$(head -n1 "$A/usrside-musl.cmdline" 2>/dev/null || echo "root=/dev/vda2 roo
 RN=$(find /dev/dri -name 'renderD*' 2>/dev/null | sort | head -n1)
 echo "Abbild $A ($(cat "$A/usrside-musl.commit" 2>/dev/null)), init=$IP, rendernode=$RN" | tee "$LOG"
 qemu-img create -q -f qcow2 -F qcow2 -b "$A/usrside-musl.qcow2" "$W/disk.qcow2"
+# GT_GL=llvmpipe: virtio-gpu ohne 3D, mesa rendert in Software (llvmpipe, Stufe 2d)
+if [[ ${GT_GL:-virgl} == llvmpipe ]]; then GPU=(-device virtio-vga -display none)
+else GPU=(-device virtio-vga-gl -display "egl-headless${RN:+,rendernode=$RN}"); fi
 nice -n 19 taskset -c "$CPUS" qemu-system-x86_64 -name grafik-test -enable-kvm -machine q35 -cpu host -smp 4 -m 4G \
 	-drive file="$W/disk.qcow2",if=virtio,cache=unsafe \
 	-kernel "$A/usrside-musl.vmlinuz" -append "$CMD init=$IP console=ttyS0,115200 panic=-1" -no-reboot \
 	-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:"$PORT"-:22 \
-	-device virtio-vga-gl -display egl-headless${RN:+,rendernode=$RN} \
+	"${GPU[@]}" \
 	-device virtio-keyboard-pci -device virtio-tablet-pci \
 	-audiodev none,id=ton -device virtio-sound-pci,audiodev=ton \
 	-serial file:"$W/serial.log" -pidfile "$W/qemu.pid" -daemonize || { bad "qemu startet nicht"; exit 1; }
@@ -64,7 +67,8 @@ EOF
 chk "niri startet" "export XDG_RUNTIME_DIR=/run/user/0 RUST_LOG=info; setsid niri >/tmp/niri.log 2>&1 < /dev/null & sleep 15; pgrep -x niri"
 chk "foot läuft" "pgrep -x foot"
 chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\$(ls /run/user/0/niri*.sock | head -n1); niri msg windows"
-chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n5; grep -qi virgl /tmp/niri.log"
+GLN=${GT_GL:-virgl}
+chk "GL-Renderer ($GLN)" "grep -iE 'renderer|virgl|llvmpipe|egl' /tmp/niri.log | head -n5; grep -qi $GLN /tmp/niri.log"
 # Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
 chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
 chk "SPA-ALSA-Plugin" "ls /usr/lib/spa-0.2/ /usr/lib/spa-0.2/alsa/ | tr '\\n' ' '; ls /usr/lib/libudev.so*"
