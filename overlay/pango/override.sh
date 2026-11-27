@@ -12,3 +12,9 @@ build() {
 		-D build-examples=false -D cairo=enabled -D fontconfig=enabled -D freetype=enabled
 	meson compile -C build
 }
+usrside_nur pango
+package_pango() {
+	provides=(libpango{,cairo,ft2}-1.0.so)
+	meson install -C build --destdir "$pkgdir"
+	rm -rf "$pkgdir/usr/share/doc"
+}

@@ -11,3 +11,10 @@ build() {
 		-D png=enabled -D freetype=enabled -D fontconfig=enabled -D zlib=enabled
 	meson compile -C build
 }
+usrside_nur cairo
+package_cairo() {
+	provides=(libcairo-gobject.so libcairo-script-interpreter.so libcairo.so)
+	options+=(!emptydirs)
+	meson install -C build --destdir "$pkgdir"
+	rm -rf "$pkgdir/usr/share/gtk-doc"
+}

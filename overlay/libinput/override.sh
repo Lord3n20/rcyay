@@ -13,3 +13,12 @@ build() {
 		-D install-tests=false -D documentation=false -D lua-plugins=disabled -D autoload-plugins=false
 	meson compile -C build
 }
+# ein Paket (Werkzeuge wie „libinput list-devices“ inklusive; die Python-Skripte brauchen python)
+usrside_nur libinput
+package_libinput() {
+	optdepends=('python: libinput-Analysewerkzeuge')
+	provides=(libinput.so libinput-tools)
+	conflicts=(libinput-tools)
+	meson install -C build --destdir "$pkgdir"
+	install -Dm644 libinput/COPYING -t "$pkgdir/usr/share/licenses/$pkgname"
+}
