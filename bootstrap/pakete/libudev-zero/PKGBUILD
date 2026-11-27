@@ -13,12 +13,13 @@ sha256sums=('0bd89b657d62d019598e6c7ed726ff8fed80e8ba092a83b484d66afb80b77da5')
 
 build() {
 	cd "$pkgname-$pkgver"
-	make PREFIX=/usr
+	# Makefile nimmt CC=c99, das gibt es im chroot nicht
+	make CC=cc PREFIX=/usr
 }
 
 package() {
 	cd "$pkgname-$pkgver"
-	make PREFIX=/usr DESTDIR="$pkgdir" install
+	make CC=cc PREFIX=/usr DESTDIR="$pkgdir" install
 	rm -f "$pkgdir/usr/lib/libudev.a"
 	install -Dm644 LICENSE -t "$pkgdir/usr/share/licenses/$pkgname"
 }
