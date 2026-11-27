@@ -5,6 +5,10 @@ usrside_tarball https://github.com/fish-shell/fish-shell/releases/download/$pkgv
 source=("${source[0]}") sha256sums=("${sha256sums[0]}")
 for _a in b2sums sha512sums md5sums; do unset "$_a"; done
 usrside_ohne git jq python-sphinx
+prepare() {
+	# cmake 4.5: install(SCRIPT CODE "…") ist ein Fehler („SCRIPT: missing required value“) → install(CODE …)
+	sed -i 's/install(SCRIPT CODE /install(CODE /' fish/cmake/Install.cmake
+}
 build() {
 	cd fish
 	export CXXFLAGS+=" ${CPPFLAGS}"
