@@ -222,6 +222,8 @@ pakete_installieren() { # pakete_installieren ZIEL
 	# OHNE: im Repo lassen, aber nicht installieren (Standard patch – Testpaket für rcyay -S im Abbild)
 	local o
 	for o in ${OHNE-patch}; do pakete=" $pakete "; pakete=${pakete// $o / }; done
+	# rust aus Quellen ersetzt die Saat (conflicts) – sonst bricht -S an dem Konflikt ab
+	if [[ " $pakete " == *" rust "* ]]; then pakete=" $pakete "; pakete=${pakete// rust-saat / }; fi
 	meldung "installiere: $pakete"
 	# shellcheck disable=SC2086
 	chroot "$WURZEL" env LC_ALL=C "$pm" -r /mnt/abbild --cachedir /mnt/abbild/var/cache/pacman/pkg \

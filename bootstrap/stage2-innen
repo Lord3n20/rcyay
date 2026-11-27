@@ -155,7 +155,8 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	done
 	[[ $flags == *-ohne-install* ]] && return 0
 	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
-	"$(paketmanager)" -U --noconfirm --overwrite '*' -dd "${liste[@]}"
+	# --ask 4: Konflikte (z. B. rust ↔ rust-saat) mit Ja beantworten, also das alte Paket entfernen
+	"$(paketmanager)" -U --noconfirm --ask 4 --overwrite '*' -dd "${liste[@]}"
 	rm -rf /var/tmp/bau/"$name"
 }
 

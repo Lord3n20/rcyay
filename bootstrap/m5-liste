@@ -64,3 +64,5 @@ lua                  arch:5.5.1-1              51e296fe0ed7fb9111e542dcfe2ce52a7
 dbus                 arch:1.16.4-1             5f7054f3427634b49923d15b8d8cf6dd9542c6fe2d6e47fece23280ee439fb1f
 pipewire             arch:1-1.6.11-2           33063a6823f939971c6cb35e4f177b00dc03a1654e9c315052e13b6589adf936
 wireplumber          arch:0.5.19-1             28ff4b48d6e8d865b8f919f5fa8fb8b7b40d2fcc1ad64946621d724ae6cee506
+# Stufe 2f: Arch-Version von rust aus Quellen (eigenes PKGBUILD, stage0 = rust-saat, llvm link-shared); ersetzt rust-saat
+rust                 eigen
