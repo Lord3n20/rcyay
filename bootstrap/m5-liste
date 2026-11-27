@@ -21,5 +21,6 @@ fontconfig           arch:2-2.18.4-1           efb9aba56bc6f35e0d2793ea268f2843f
 harfbuzz             arch:15.2.0-1             196f0b09ca2cb14fadfad46341d315cbf8ac8daceb3ae315b4dd4674411c7057
 wayland-protocols    arch:1.50-1               ab0bcef424257c86cca805df6257e1e264ff23a61bd0ef62a09d357db9bf31a1
 fcft                 arch:3.3.3-1              77d215fd9dfb4c05482cc2ea23989f2a3fb12f9a0bd6a1fd1405c29a26b778fa
+bison                arch:3.8.2-8              0564db9d132f98919a536d0073ba68658138aa6cf970522760df00e08a449d5b
 libxkbcommon         arch:1.13.2-1             308bcc311dd5b014458ac68dc09dd52896b85e9f9fc73709320bc44612b9666c
 foot                 arch:1.28.0-2             1d5560a3ebaa829ea7b12195eb2bd6b6416a493d6ac8a77020e5315764ba6710
