@@ -81,6 +81,7 @@ xorg-font-util       arch:1.4.2-1              2888ef92478739ebc57e65f121dda998d
 libfontenc           arch:1.1.10-1             ddfd04c8ecb33af74261ee1ee49181e5fad9203fa43687ff7e41f14160f32c4b
 libxfont2            arch:2.0.10-1             2d784e620252bd32ba932fcc6c638b0215db37043d9e32d39b3c3979684238bd
 libxcvt              arch:0.1.3-1              eee1b8709c64717f52f33232d2a6ec80536c4959010d1381b6a94e34664afd3b
+libxshmfence         arch:1.3.3-1              df87515562cb9061dd53a04e9b841e97182e2139d63c076cb424d5a826c2379d
 xorg-xwayland        arch:24.1.15-1            7e9a5b878a1604399d62ae260d43041f81cb59d9ef5d3e7b604c6c03cf2061b8
 xcb-util             arch:0.4.1-2              4254b0f46bf1e52de5a094f1fbb2a774cd9c250b2007eeed0a2462903d9554a6
 xcb-util-renderutil  arch:0.3.10-2             8579c76dc84ba7ada334d94007ebcc239614cf34d92fbbc1870f9ea704137d67

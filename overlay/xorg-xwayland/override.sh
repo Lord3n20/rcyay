@@ -1,8 +1,8 @@
-# Xwayland für xwayland-satellite (niri): ohne glamor/DRI3/GLX (mesa ohne libGL/libglvnd, kein libepoxy), ohne
+# Xwayland für xwayland-satellite (niri): ohne glamor/DRI3/GLX (libxshmfence wird für misyncshm trotzdem gebraucht) (mesa ohne libGL/libglvnd, kein libepoxy), ohne
 # libdecor (nur rootful), libei (Portal-Eingabe), secure-rpc (libtirpc/krb5); SHA1 aus OpenSSL statt nettle.
 # X-Clients rendern damit über SHM in Software – genügt für X11-Programme unter niri.
 # Ohne xorg-server-common: protocol.txt und Xserver.1 bleiben in diesem Paket.
-usrside_ohne nettle libepoxy libtirpc libei libxshmfence libdecor libglvnd mesa mesa-libgl xorg-server-common systemd
+usrside_ohne nettle libepoxy libtirpc libei libdecor libglvnd mesa mesa-libgl xorg-server-common systemd
 build() {
 	arch-meson xwayland-$pkgver build \
 		-D ipv6=true -D xvfb=false -D xdmcp=false -D xcsecurity=true \
