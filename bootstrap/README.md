@@ -102,6 +102,9 @@ nach NEU=1/Overlay-Änderung muss in den chroot).
 hmac(…), cmac(aes), ecb/cbc/ctr(aes), ecb(des), cbc(des3_ede), ecb(arc4); keyctl DH_COMPUTE (1536-Bit-Gruppe);
 asymmetrische Schlüssel X.509 und PKCS#8 + PKEY_QUERY. Abbild-Kernel 2 (26.11.): alles da außer ecb(arc4) →
 ab abbild-kernel-3 `CRYPTO_ARC4`, `CRYPTO_USER_API_ENABLE_OBSOLETE`, `CRYPTO_CTR` im Fragment.
+Abbild-Kernel 3 (27.11., Abbild f564bd53): alles ok **außer weiterhin ecb(arc4)** (bind → ENOENT), obwohl
+`CRYPTO_ARC4=y`, `ECB=y`, `USER_API_ENABLE_OBSOLETE=y` gesetzt und arc4.o gebaut ist (arc4 ist seit 6.x ein lskcipher,
+`ecb(arc4)` entsteht über die ecb-Vorlage) – offen. Betrifft in iwd nur TKIP/WPA1 und alte EAP-Verfahren, WPA2/WPA3 nicht.
 
 ### Inits im Abbild (Paket `usrside-dienste`)
 Alle drei liegen im selben Abbild, gewählt wird mit `init=`:

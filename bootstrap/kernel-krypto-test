@@ -1,7 +1,7 @@
 #!/bin/bash
 # kernel-krypto-test KERNEL: bootet KERNEL in qemu mit einem Mini-Initramfs, dessen /init
 # bootstrap/test/kernel-krypto ist (AF_ALG-Hashes/-Chiffren, keyctl DH, X.509/PKCS#8 – was iwd braucht).
-# Läuft auf jedem Wirt mit gcc (-static), openssl, bsdtar und qemu-system-x86_64. Rückgabe 0 = alles da.
+# KK_INIT=DATEI: fertig gebautes kernel-krypto statt gcc. Läuft auf jedem Wirt mit gcc (-static), openssl, bsdtar und qemu-system-x86_64. Rückgabe 0 = alles da.
 set -euo pipefail
 [[ $# -eq 1 && -r $1 ]] || { echo "Aufruf: $0 KERNEL(bzImage)" >&2; exit 2; }
 kern=$(realpath "$1")
@@ -9,7 +9,7 @@ quelle=$(cd "$(dirname "$0")" && pwd)/test/kernel-krypto.c
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 mkdir "$tmp/wurzel"
-gcc -static -O2 -o "$tmp/wurzel/init" "$quelle"
+if [[ -n ${KK_INIT:-} ]]; then cp "$KK_INIT" "$tmp/wurzel/init"; else gcc -static -O2 -o "$tmp/wurzel/init" "$quelle"; fi
 openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=usrside-test -days 1 \
 	-keyout "$tmp/k.pem" -outform DER -out "$tmp/wurzel/zert.der" 2>/dev/null
 openssl pkcs8 -topk8 -nocrypt -in "$tmp/k.pem" -outform DER -out "$tmp/wurzel/schluessel.pk8"
