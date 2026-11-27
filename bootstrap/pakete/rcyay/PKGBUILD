@@ -2,7 +2,7 @@
 # rcyay-src.tar.gz und rcyay.ver neben dieses PKGBUILD)
 pkgname=rcyay
 pkgver=$(cat rcyay.ver 2>/dev/null || echo 7.1.0)
-pkgrel=2
+pkgrel=3
 pkgdesc='Package manager of UsrsideOS: pacman fork that also builds from the AUR'
 arch=(x86_64)
 url='https://github.com/Lord3n20/rcyay'
@@ -11,7 +11,8 @@ depends=(bash curl gpgme libarchive openssl musl)
 makedepends=(meson python)
 provides=(pacman "pacman=7.1.0" libalpm.so)
 conflicts=(pacman)
-backup=(etc/pacman.conf etc/makepkg.conf etc/rcyay.conf)
+backup=(etc/pacman.conf etc/makepkg.conf)
+optdepends=("usrside-init: /etc/rcyay.conf und Dienst-Hooks")
 options=(!lto)
 source=(rcyay-src.tar.gz pacman.conf makepkg.conf)
 sha256sums=(SKIP SKIP SKIP)
@@ -30,6 +31,10 @@ package() {
 	DESTDIR="$pkgdir" meson install -C build --no-rebuild
 	install -Dm644 pacman.conf "$pkgdir/etc/pacman.conf"
 	install -Dm644 makepkg.conf "$pkgdir/etc/makepkg.conf"
-	[[ -e $pkgdir/etc/rcyay.conf ]] || : >"$pkgdir/etc/rcyay.conf"
+	# /etc/rcyay.conf liefert usrside-init (wie rcyay pkg/rcyay); hier nur das Beispiel
+	if [[ -e $pkgdir/etc/rcyay.conf ]]; then
+		install -Dm644 "$pkgdir/etc/rcyay.conf" "$pkgdir/usr/share/rcyay/rcyay.conf.example"
+		rm "$pkgdir/etc/rcyay.conf"
+	fi
 	install -dm755 "$pkgdir/var/lib/pacman" "$pkgdir/var/cache/pacman/pkg"
 }

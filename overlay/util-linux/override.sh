@@ -36,6 +36,8 @@ package_util-linux() {
 	if [[ -d $pkgdir/usr/share/man/man3 ]]; then mv "$pkgdir"/usr/share/man/man3 util-linux-libs/man3; fi
 	# volle Fassungen für Installer/usrkrnl (lsblk -o, blkid -s/-o, mount -o subvol …)
 	usrside_busybox_doppelte $_usrside_ul_vorrang
+	# nologin liefert filesystem (bootstrap/pakete/filesystem)
+	rm -f "$pkgdir/usr/bin/nologin" "$pkgdir/usr/share/man/man8/nologin.8"
 	# sbin-Programme legt meson nach /usr/bin (--sbindir bin); leere Ordner weg
 	find "$pkgdir" -depth -type d -empty -delete
 	install -vDm644 util-linux/Documentation/licenses/COPYING.{BSD*,ISC} -t "$pkgdir/usr/share/licenses/$pkgname/"
