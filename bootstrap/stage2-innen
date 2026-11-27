@@ -180,6 +180,11 @@ while read -r name herkunft rest; do
 		case $f in -*) flags+=" $f" ;; *) sum=$f ;; esac
 	done
 	if ((${#wahl[@]})) && [[ " ${wahl[*]} " != *" $name "* ]]; then continue; fi
+	# „vorbau“: Vorbau-Werkzeug (v_NAME) an dieser Stelle neu bauen, z. B. python mit _ctypes, sobald libffi da ist
+	if [[ $herkunft == vorbau ]]; then
+		schritt "stage2-$name-vorbau-neu" "v_$name"
+		continue
+	fi
 	schritt "stage2-$name-${herkunft//[:\/]/_}" paket "$name" "$herkunft" "$sum" "$flags"
 done <"/usrside/bootstrap/${LISTE:-stage2-liste}"
 NEU=1 schritt stage2-repo repo_aktualisieren

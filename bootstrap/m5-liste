@@ -7,6 +7,8 @@ default-cursors      arch:3-1                  f2af82481f4926b1a1541229172b4a05c
 expat                arch:2.10.0-1             18e85173596f5a5a5738fccdfb34ce58294ee16dc381434ce688e145a761e491
 gperf                arch:3.3-2                cbcc8f16bf302578f92c6020c8cbb70b56f476c8ab347dabbb95c6d7f65b362a
 libffi               arch:3.8.1-1              d66d5104f2139c0e62955584194dc58908b25286985f56ccee9147cc51d916d9
+# Vorbau-python noch einmal, jetzt mit libffi → _ctypes (mesa: intel/compiler/gen/gen_inst_info.py)
+python               vorbau
 libpng               arch:1.6.59-1             9132e506e26e81e104c3231bd56a4b45871d5205b7c5937f2d674d5e13a25aa6
 libutf8proc          arch:2.12.0-1             da078a7d6892f7dbce2b4a26b8ff08e2df073dcf08315e2c36e711dd248be59e
 libxml2              arch:2.15.4-1             3ec00c93e14e38db74e1ff21e173afb7214c5f7b6454b84bd57582b60f6aac2f
