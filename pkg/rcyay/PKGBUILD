@@ -22,14 +22,32 @@ options=(!lto)
 _src() { realpath "${RCYAY_SRC:-$startdir/../..}"; }
 
 pkgver() {
-	local s v n
+	# Mit .git muss git die Kennung liefern (sonst laut scheitern, z. B. safe.directory/fremder Besitzer
+	# unter makepkg, das die System-gitconfig nicht liest); nur ohne .git (Tarball, git archive) oder bei
+	# einem Worktree-Verweis ins Leere (9p-Freigabe in einer VM) zurück auf RCYAY_VERSION, mit Warnung.
+	local s v n h g
 	s=$(_src)
 	v=$(sed -n 's/^#define RCYAY_VERSION "\(.*\)"/\1/p' "$s/src/rcyay/rcyay.h")
-	if n=$(git -C "$s" rev-list --count HEAD 2>/dev/null); then
-		printf '%s.r%s.g%s\n' "$v" "$n" "$(git -C "$s" rev-parse --short=8 HEAD)"
-	else
+	[[ -n $v ]] || { error "RCYAY_VERSION fehlt in $s/src/rcyay/rcyay.h"; return 1; }
+	if [[ -f $s/.git ]]; then
+		g=$(sed -n 's/^gitdir: //p' "$s/.git")
+		[[ $g == /* ]] || g=$s/$g
+		if [[ ! -d $g ]]; then
+			warning "$s/.git verweist auf fehlendes $g – pkgver ohne Commit: $v"
+			printf '%s\n' "$v"
+			return 0
+		fi
+	elif [[ ! -d $s/.git ]]; then
+		warning "kein .git in $s – pkgver ohne Commit: $v"
 		printf '%s\n' "$v"
+		return 0
 	fi
+	command -v git >/dev/null || { error "$s ist ein git-Baum, aber git fehlt"; return 1; }
+	n=$(git -C "$s" rev-list --count HEAD) && h=$(git -C "$s" rev-parse --short=8 HEAD) || {
+		error "git in $s scheitert (Meldung oben; fremder Besitzer? Baum dem Bauenden geben)"
+		return 1
+	}
+	printf '%s.r%s.g%s\n' "$v" "$n" "$h"
 }
 
 build() {
