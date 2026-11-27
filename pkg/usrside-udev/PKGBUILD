@@ -9,7 +9,7 @@
 #   cd pkg/usrside-udev && makepkg
 pkgname=usrside-udev
 pkgver=2026.11.26
-pkgrel=2
+pkgrel=3
 pkgdesc='UsrsideOS: start systemd-udevd and systemd-tmpfiles at boot under BusyBox init, runit or s6'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
