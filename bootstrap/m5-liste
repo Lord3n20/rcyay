@@ -42,6 +42,14 @@ libdisplay-info      arch:0.3.0-1              f97bb1cb67e57522ee24915d104c5a67f
 libdrm               arch:2.4.134-1            13c7bad8b32469d24e3d51c723a0c80ec5abed98300c8c50ccc7fb9f89ffbb65
 libinput             arch:1.32.0-2             5683ac1b73302c6751a34a4e8cc21f524560ae7f90753c0d65433b67895d7e4a
 flex                 arch:2.7.6-1              56f3f67fc801034e20b8f11b8281bf79b80ef2462103421b2ae0fcb58523ec7f
+# Stufe 2d: LLVM + clang + lld (eigenes PKGBUILD, ein Paket) – für mesa iris/llvmpipe und rust aus Quellen
+llvm                 eigen
+# Stufe 2e: CLC-Kette für mesa iris/crocus (SPIR-V-Werkzeuge, Translator gegen das eigene llvm, libclc eigen)
+spirv-headers        arch:1-1.4.363.0-1        d32d0fd83c75caf69ae87658077eabe06a6c140d3e84b59de9fd7150fe9ef207
+spirv-tools          arch:1-1.4.363.0-1        bd308902cd826c1ac228994643d9893e0b0ace47816943d8751c316faed8edf6
+spirv-llvm-translator arch:23.1.3-1            9122b085f9bdff887bd7e4be2b37bdb427c4eb7834a18d1ff87075a2bc453c67
+libclc               eigen
+# (Stufen 2d/2e stehen vor mesa, weil mesa llvmpipe/iris sie braucht)
 mesa                 arch:1-26.3.1-3           786ee0bc3e5d1d4fc43e341eef52afdcbe66110f78724ccd3fa5ca42fdc2616b
 pango                arch:1-1.58.2-1           139ddbeb262508cb43110c0ad6d659902ab32b0403eb43fc20b27b446a23af6c
 ttf-dejavu           arch:2.37+18+g9b5d1b2f-8  e277025f511c4acfbcfa3637b0b6cc7e5f376e29757245291e457596967eb0d4
@@ -54,5 +62,3 @@ lua                  arch:5.5.1-1              51e296fe0ed7fb9111e542dcfe2ce52a7
 dbus                 arch:1.16.4-1             5f7054f3427634b49923d15b8d8cf6dd9542c6fe2d6e47fece23280ee439fb1f
 pipewire             arch:1-1.6.11-2           33063a6823f939971c6cb35e4f177b00dc03a1654e9c315052e13b6589adf936
 wireplumber          arch:0.5.19-1             28ff4b48d6e8d865b8f919f5fa8fb8b7b40d2fcc1ad64946621d724ae6cee506
-# Stufe 2d: LLVM + clang + lld (eigenes PKGBUILD, ein Paket) – für mesa iris/llvmpipe und rust aus Quellen
-llvm                 eigen
