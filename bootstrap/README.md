@@ -33,7 +33,7 @@ Einstellungen (Umgebung, siehe `lib.sh`): `VARIANTE` (musl | glibc), `TC`, `ARBE
 | `besitzer-reparieren` | alter Notbehelf (vor 774ac5e3): packt das Repo als root:root neu; seit dem fakeroot-Fix überflüssig |
 | `arch-eintrag` | Pflege (Arch-Rechner): Listenzeile `NAME arch:TAG SHA` aus den Sync-Datenbanken |
 | `m5-ordnung` | Pflege: Bau-Reihenfolge für M5 aus den Sync-Datenbanken (depends des gebrauchten Teilpakets, makedepends je Basis, minus `usrside_ohne` des Overlays; `--warum NAME` zeigt die Kette zum Beschneiden) |
-| `m5-liste` | M5-Pakete (Stufe 1: Wayland-Grundlage, seatd, foot) |
+| `m5-liste` | M5-Pakete (Stufe 1: gawk, bison, Wayland-Grundlage, xkb, Schriften, seatd, foot – 22 Pakete, in bau-e2 gebaut 27.11.) |
 | `kernel-krypto-test` | bootet einen Kernel mit Mini-Initramfs (`test/kernel-krypto.c` als /init) und prüft, was iwd vom Kernel braucht |
 
 ## Ablauf
@@ -129,7 +129,7 @@ Die Dienstdateien sind bewusst statisch; sobald `rcyay-dienste` (M2) sie aus sys
 | `linux-api-headers` ohne `headers_install` | braucht rsync; stattdessen `make headers` und Kopieren (wie LFS). |
 | gnupg fehlt noch | gpgme ist da, aber ohne gpg prüft rcyay keine Signaturen: Repo `usrside-musl` hat `SigLevel = Never`, PKGBUILD-Signaturen werden mit `--skippgpcheck` übergangen (die sha256/b2-Prüfsummen gelten weiter). |
 | Python ohne `_ssl` im Vorbau | Python 3.14.10 nutzt noch `TLSv1_method`, das OpenSSL 4 nicht mehr hat; meson braucht kein ssl. |
-| gcc: zwei awk-Stellen umgeschrieben | gawk 5.4.1 auf musl: ein Feldelement, das nur in `arr[x] == ""` angefasst wurde, wird beim Anhängen zu `"0"` (`e[k] == ""; e[k] = e[k] "a"` → `0a`; gleiches gawk auf glibc → `a`; kein Optimierungs-/PMA-Effekt). gcc's `opt-gather.awk`/`optc-gen.awk` treffen genau das; `pakete/gcc` prüft dort mit `j > 1` bzw. `in`. BusyBox awk ist keine Alternative (frisst `\\+` im gsub-Ersatz → `CL_CXX` fehlt). Ursache in gawk/musl klärt M5. |
+| gcc: zwei awk-Stellen umgeschrieben | gawk 5.4.1 auf musl: ein Feldelement, das nur in `arr[x] == ""` angefasst wurde, wird beim Anhängen zu `"0"` (`e[k] == ""; e[k] = e[k] "a"` → `0a`; gleiches gawk auf glibc → `a`; kein Optimierungs-/PMA-Effekt). gcc's `opt-gather.awk`/`optc-gen.awk` treffen genau das; `pakete/gcc` prüft dort mit `j > 1` bzw. `in`. BusyBox awk ist keine Alternative (frisst `\\+` im gsub-Ersatz → `CL_CXX` fehlt). **Ursache (27.11.):** kein musl-Fehler, sondern gawk 5.4.1 ohne MPFR (`--without-mpfr`, so baut der Vorbau) – auf glibc genauso (`BEGIN{z[1]; print "[" z[1] "]"}` → `[0]`). M5 baut deshalb zuerst Arch-gawk mit MPFR (`overlay/gawk`); traf auch libpng (`pnglibconf.h`). |
 | Kernel nicht als Paket | usrkrnl ist absichtlich ein maschinenbezogener Bau (`usrkrnl/setup`), kein generisches Paket; das Abbild bekommt ihn direkt. |
 | Rust (niri, fish ≥ 4, M5 Stufe 2) | rustc lässt sich nicht ohne vorhandenes rustc bauen; Saat ist das offizielle `x86_64-unknown-linux-musl`-Toolchain-Archiv von static.rust-lang.org (feste sha256), damit wird Arch-`rust` aus Quellen gebaut (wie Alpine/Chimera). |
 | HTTPS mit BusyBox-wget | BusyBox-TLS prüft keine Zertifikate; für Downloads mit Prüfung nimmt rcyay/makepkg curl. |
