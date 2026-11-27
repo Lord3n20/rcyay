@@ -1,0 +1,85 @@
+# llvm (M5 Stufe 2d): LLVM + clang + lld für musl, als EIN Paket (provides wie pipewire).
+# Eigenes PKGBUILD statt Arch-llvm: Arch baut aus derselben Quelle 18 Pakete (lldb, polly, bolt, openmp, offload,
+# libc++, libclc, wasi-*, 32-Bit-compiler-rt) mit Bauabhängigkeiten, die es auf musl (noch) nicht gibt
+# (swig, sphinx, lib32-gcc-libs, wasi-libc, spirv-llvm-translator – das selbst llvm braucht). Quelle und Prüfsumme
+# wie im Arch-PKGBUILD llvm 23.1.5-1. Ziele X86 (llvmpipe, rust), AMDGPU (radeonsi), SPIRV (libclc/rusticl später).
+# Verwendet von: mesa (llvmpipe, iris-CLC), Arch-rust aus Quellen (llvm.link-shared).
+pkgname=llvm
+pkgver=23.1.5
+pkgrel=1
+pkgdesc='LLVM, clang und lld (musl, ein Paket)'
+arch=(x86_64)
+url='https://llvm.org/'
+license=('Apache-2.0 WITH LLVM-exception')
+depends=(musl gcc libffi libxml2 zlib zstd ncurses)
+makedepends=(cmake ninja python)
+provides=("llvm-libs=$pkgver" "clang=$pkgver" "clang-libs=$pkgver" "lld=$pkgver"
+	libLLVM.so "libclang-cpp.so=${pkgver%%.*}" "libclang.so=${pkgver%%.*}")
+conflicts=(llvm-libs clang clang-libs lld)
+options=(staticlibs !lto !debug)
+source=("https://github.com/llvm/llvm-project/releases/download/llvmorg-$pkgver/llvm-project-$pkgver.src.tar.xz")
+sha256sums=('fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e')
+
+prepare() {
+	cd "llvm-project-$pkgver.src"
+	# Arch: eigenes Findzstd passt nicht zu zstd (zstdConfig.cmake von zstd selbst)
+	rm -f llvm/cmake/modules/Findzstd.cmake
+}
+
+build() {
+	cd "llvm-project-$pkgver.src"
+	# ohne Debug-Infos: halbiert Platz und Speicher beim Linken
+	CFLAGS=${CFLAGS//-g /} CXXFLAGS=${CXXFLAGS//-g /}
+	export CFLAGS CXXFLAGS
+	local args=(
+		-G Ninja
+		-DCMAKE_BUILD_TYPE=Release
+		-DCMAKE_INSTALL_PREFIX=/usr
+		-DCMAKE_INSTALL_DOCDIR=share/doc
+		-DCMAKE_SKIP_INSTALL_RPATH=ON
+		-DLLVM_HOST_TRIPLE="$CHOST"
+		-DLLVM_DEFAULT_TARGET_TRIPLE="$CHOST"
+		-DLLVM_TARGETS_TO_BUILD='X86;AMDGPU;SPIRV'
+		-DLLVM_ENABLE_PROJECTS='clang;lld'
+		-DLLVM_BUILD_LLVM_DYLIB=ON
+		-DLLVM_LINK_LLVM_DYLIB=ON
+		-DCLANG_LINK_CLANG_DYLIB=ON
+		-DLLVM_ENABLE_RTTI=ON
+		-DLLVM_ENABLE_FFI=ON
+		-DLLVM_ENABLE_LIBXML2=ON
+		-DLLVM_ENABLE_ZLIB=FORCE_ON
+		-DLLVM_ENABLE_ZSTD=FORCE_ON
+		-DLLVM_ENABLE_LIBEDIT=OFF
+		-DLLVM_ENABLE_CURL=OFF
+		-DLLVM_ENABLE_BINDINGS=OFF
+		-DLLVM_INSTALL_UTILS=ON
+		-DLLVM_INCLUDE_TESTS=OFF
+		-DLLVM_BUILD_TESTS=OFF
+		-DLLVM_INCLUDE_BENCHMARKS=OFF
+		-DLLVM_INCLUDE_EXAMPLES=OFF
+		-DLLVM_INCLUDE_DOCS=OFF
+		-DCLANG_INCLUDE_TESTS=OFF
+		-DCLANG_INCLUDE_DOCS=OFF
+		-DLLD_INCLUDE_TESTS=OFF
+		-DCLANG_DEFAULT_PIE_ON_LINUX=ON
+		-DLLVM_PARALLEL_LINK_JOBS=2
+		-DENABLE_LINKER_BUILD_ID=ON
+	)
+	cmake -S llvm -B build "${args[@]}"
+	ninja -C build
+
+	# Rauchtest mit dem frisch gebauten clang (C und C++ gegen musl/libstdc++, lld)
+	printf '#include <stdio.h>\nint main(void){puts("hallo-c");return 0;}\n' >build/t.c
+	printf '#include <iostream>\nint main(){std::cout<<"hallo-cxx\\n";}\n' >build/t.cc
+	build/bin/clang build/t.c -o build/t-c && [[ $(build/t-c) == hallo-c ]]
+	build/bin/clang++ build/t.cc -o build/t-cxx && [[ $(build/t-cxx) == hallo-cxx ]]
+	build/bin/clang -fuse-ld=lld build/t.c -o build/t-lld && [[ $(build/t-lld) == hallo-c ]]
+}
+
+package() {
+	cd "llvm-project-$pkgver.src"
+	DESTDIR="$pkgdir" ninja -C build install
+	# Arch legt die Dateien von llvm-lit/opt-viewer nicht in llvm; Python-Hilfen hier unnötig
+	rm -rf "$pkgdir/usr/share/opt-viewer"
+	install -Dm644 llvm/LICENSE.TXT "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
