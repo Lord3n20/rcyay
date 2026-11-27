@@ -1,7 +1,7 @@
 # UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
 pkgname=filesystem
 pkgver=2026.11.26
-pkgrel=3
+pkgrel=4
 pkgdesc='UsrsideOS base filesystem layout'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
@@ -28,6 +28,7 @@ package() {
 		root:x:0:0:root:/root:/usr/bin/bash
 		bin:x:1:1::/:/usr/bin/nologin
 		daemon:x:2:2::/:/usr/bin/nologin
+		dbus:x:81:81:System Message Bus:/:/usr/bin/nologin
 		bau:x:1000:1000:makepkg:/home/bau:/usr/bin/bash
 		nobody:x:65534:65534:Nobody:/:/usr/bin/nologin
 	X
@@ -49,10 +50,11 @@ package() {
 		render:x:98:
 		seat:x:960:
 		kvm:x:78:
+		dbus:x:81:
 		bau:x:1000:
 		nobody:x:65534:
 	X
-	printf '%s\n' 'root:!*::::::' 'bin:!*::::::' 'daemon:!*::::::' 'bau:!*::::::' 'nobody:!*::::::' >etc/shadow
+	printf '%s\n' 'root:!*::::::' 'bin:!*::::::' 'daemon:!*::::::' 'dbus:!*::::::' 'bau:!*::::::' 'nobody:!*::::::' >etc/shadow
 	chmod 600 etc/shadow
 	printf '%s\n' '127.0.0.1 localhost' '::1 localhost' >etc/hosts
 	printf 'usrside\n' >etc/hostname

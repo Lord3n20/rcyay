@@ -46,3 +46,11 @@ mesa                 arch:1-26.3.1-3           786ee0bc3e5d1d4fc43e341eef52afdcb
 pango                arch:1-1.58.2-1           139ddbeb262508cb43110c0ad6d659902ab32b0403eb43fc20b27b446a23af6c
 ttf-dejavu           arch:2.37+18+g9b5d1b2f-8  e277025f511c4acfbcfa3637b0b6cc7e5f376e29757245291e457596967eb0d4
 niri                 arch:26.04-1              4e4215ac5f1a16dee1700a8bb668fff115a585a2fd4b9856c6fd0761930e7826
+# Stufe 2c (Ton): alsa, dbus ohne systemd, pipewire (Grundfunktionen), wireplumber mit System-lua
+alsa-topology-conf   arch:1.2.5.1-4            150062d78bc4ba4c02db723741e5d8e186b00a6efac646de8a432a2e3b3d78ab
+alsa-ucm-conf        arch:1.2.16.1-1           c388d35d0cb5e264e42dad56e959c4f657f87433d812b7e3afa59f414b482a23
+alsa-lib             arch:1.2.16.1-1           f052590ae4062614ef56db5da9773bbe8fbfc41d00a0daa2ee1f648707b547fb
+lua                  arch:5.5.1-1              51e296fe0ed7fb9111e542dcfe2ce52a709f5aa2d096549aa132b9b06f0a9c57
+dbus                 arch:1.16.4-1             5f7054f3427634b49923d15b8d8cf6dd9542c6fe2d6e47fece23280ee439fb1f
+pipewire             arch:1-1.6.11-2           33063a6823f939971c6cb35e4f177b00dc03a1654e9c315052e13b6589adf936
+wireplumber          arch:0.5.19-1             28ff4b48d6e8d865b8f919f5fa8fb8b7b40d2fcc1ad64946621d724ae6cee506
