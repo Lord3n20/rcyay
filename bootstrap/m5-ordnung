@@ -27,7 +27,8 @@ GRUPPEN = {
              "graphviz", "asciidoc", "asciidoctor", "xmlto", "gtk-doc", "gi-docgen", "hotdoc", "help2man",
              "texinfo", "scdoc", "docbook-xsl", "docbook-xml", "pandoc-cli", "ruby-ronn-ng", "yelp-tools",
              "itstool", "xmltoman", "man-db", "groff", "go-md2man", "mandoc"},
-    "SYSTEMD": {"systemd", "systemd-libs", "libsystemd.so", "libudev.so", "libelogind"},
+    "SYSTEMD": {"systemd", "systemd-libs", "libsystemd.so", "libudev.so", "libelogind", "valgrind", "libxcrypt",
+                "libcrypt.so", "libnsl"},
 }
 args = sys.argv[1:]
 haben, ohne, ersatz, warum = set(), set(), {}, None
