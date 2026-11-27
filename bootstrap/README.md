@@ -109,8 +109,9 @@ root-Schlüssel) → `usrside-AAAAMMTT.iso` + `.commit` + `.sha256`, Link `usrsi
   + alle Pakete der Installer-Optionen außer `OFFLINE_OHNE` (Standard printing fish office games latex), samt
   Abhängigkeiten. Die `mirrorlist` des Live-Systems nennt `file:///run/usrside/quelle/usrside/arch/$repo` zuerst –
   damit nutzen pacman/rcyay im Live-System und die pacman.conf des Installers (`Include = mirrorlist`) das Medium,
-  online fällt pacman für Fehlendes auf den nächsten Server zurück. AUR-Pakete (Browser, tuxedo-drivers) gehen
-  offline nicht. `OFFLINE=0` → kleines ISO.
+  online fällt pacman für Fehlendes auf den nächsten Server zurück. AUR-Pakete der Optionen (tuxedo-drivers-dkms …) liegen
+  fertig gebaut in `usrside/repo/usrside-aur` (Repo mit Datenbank, gebaut auf dem Arch-Bauwirt, Stand der AUR-git-Repos
+  in `aur-commits.txt`; Laufzeit-Abhängigkeiten im Spiegel); der Browser (ungoogled-chromium-bin) bleibt offline weg. `OFFLINE=0` → kleines ISO.
 
 ### Gelöst: fakeroot auf musl (27.11.)
 musl exportiert `__xstat`, `__lxstat`, `__fxstat`, `__fxstatat`, `__xmknod(at)` nur als glibc-Kompatibilitätssymbole;

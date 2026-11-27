@@ -11,6 +11,8 @@
 #                             (Fallback-Kernel des Installers)
 #   usrside/arch/{core,extra,multilib}/   Offline-Spiegel: Arch-Datenbanken des Baustands + alle Pakete, die der
 #                             Installer ohne AUR braucht (OFFLINE=1); die mirrorlist des Live-Systems nennt ihn zuerst
+#   usrside/repo/usrside-aur/   AUR-Pakete der Installer-Optionen fertig gebaut (ohne Browser; OFFLINE=1,
+#                             AUR_OHNE=browser), aur-commits.txt = Stand der AUR-git-Repos
 #   usrside/repo/usrside-musl/  musl-Repo von stage2 (für LIBC=musl)
 #   usrside/commit, usrside/version
 # Im Live-System liegt das Medium unter /run/usrside/quelle (live-init; direkt wie Ventoy).
@@ -116,6 +118,7 @@ spiegel() {
 		for k in "${!PKG[@]}"; do [[ " $OHNE " == *" $k "* ]] || p+=" ${PKG[$k]}"; done
 		echo "$p"' _ "$RFS/usr/share/usrside-installer/os/usrside.sh")
 	[[ -n $pakete ]] || abbruch "Paketliste des Installers leer"
+	pakete+=" $AUR_DEPS"
 	meldung "Offline-Spiegel: $pakete"
 	local P=(pacman --config "$konf" --dbpath "$w" -r "$r" --noconfirm --cachedir "$I/spiegel-cache")
 	"${P[@]}" -Sy >/dev/null
@@ -137,6 +140,42 @@ spiegel() {
 	done
 	meldung "Offline-Spiegel: $n Pakete, $(du -sh "$d" | cut -f1)"
 }
+
+# AUR-Pakete der Installer-Optionen (ohne Browser und OFFLINE_OHNE) fertig gebaut als Repo usrside-aur;
+# gebaut auf dem Arch-Bauwirt (glibc wie das Ziel) mit makepkg als Nutzer bau, Bauabhängigkeiten per pacman
+AUR_DEPS=""
+aur_bauen() {
+	local d=$I/aur q=$I/aur-quellen liste n info
+	rm -rf "$d" "$q"
+	mkdir -p "$d" "$q"
+	chown "${NUTZER:-bau}" "$q"
+	liste=$(env -i PATH="$PATH" OHNE="$OFFLINE_OHNE ${AUR_OHNE-browser}" bash -c '
+		log() { :; }; warn() { :; }; die() { exit 1; }
+		. "$1"
+		for k in "${!AUR[@]}"; do [[ " $OHNE " == *" $k "* ]] || echo "${AUR[$k]}"; done' _ \
+		"$RFS/usr/share/usrside-installer/os/usrside.sh" | tr ' ' '\n' | sort -u)
+	: >"$d/aur-commits.txt"
+	for n in $liste; do
+		meldung "AUR: $n"
+		su -s /bin/bash "${NUTZER:-bau}" -c "git clone -q 'https://aur.archlinux.org/$n.git' '$q/$n'"
+		info=$(su -s /bin/bash "${NUTZER:-bau}" -c "cd '$q/$n' && makepkg --printsrcinfo")
+		local dep mdep
+		dep=$(awk -F' = ' '$1 ~ /^\tdepends$/ {print $2}' <<<"$info" | tr '\n' ' ')
+		mdep=$(awk -F' = ' '$1 ~ /^\t(makedepends|checkdepends)$/ {print $2}' <<<"$info" | tr '\n' ' ')
+		# Bauabhängigkeiten auf dem Wegwerf-Bauwirt; die Laufzeit-Abhängigkeiten kommen in den Spiegel
+		# shellcheck disable=SC2086
+		[[ -z $dep$mdep ]] || pacman -S --needed --noconfirm --asdeps $dep $mdep >/dev/null
+		AUR_DEPS+=" $dep"
+		su -s /bin/bash "${NUTZER:-bau}" -c "cd '$q/$n' && makepkg -f --nodeps --noconfirm --noprogressbar" ||
+			abbruch "AUR-Paket $n lässt sich nicht bauen"
+		cp "$q/$n"/*.pkg.tar.zst "$d/"
+		printf '%s %s\n' "$n" "$(git -c safe.directory='*' -C "$q/$n" rev-parse HEAD)" >>"$d/aur-commits.txt"
+	done
+	[[ -n $liste ]] || { warnung "keine AUR-Pakete"; return 0; }
+	repo-add -q "$d/usrside-aur.db.tar.zst" "$d"/*.pkg.tar.zst
+	meldung "Repo usrside-aur: $(find "$d" -maxdepth 1 -name "*.pkg.tar.zst" -printf "%f ")"
+}
+((OFFLINE)) && aur_bauen
 ((OFFLINE)) && spiegel
 
 # ---- 4. Live-Kernel mit eingebautem Initramfs und eingebauter Befehlszeile ----
@@ -184,6 +223,10 @@ mksquashfs "$RFS" "$BAUM/usrside/rootfs.sfs" -comp zstd -Xcompression-level 19 -
 install -m644 "$I/BOOTX64.EFI" "$BAUM/EFI/BOOT/BOOTX64.EFI"
 if ((OFFLINE)); then
 	cp -al "$I/spiegel" "$BAUM/usrside/arch" 2>/dev/null || cp -a "$I/spiegel" "$BAUM/usrside/arch"
+	if [[ -s $I/aur/usrside-aur.db.tar.zst ]]; then
+		mkdir -p "$BAUM/usrside/repo"
+		cp -a "$I/aur" "$BAUM/usrside/repo/usrside-aur"
+	fi
 fi
 if [[ -s $MUSL_REPO/usrside-musl.db.tar.zst ]]; then
 	mkdir -p "$BAUM/usrside/repo"
