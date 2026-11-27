@@ -200,6 +200,8 @@ grep -q '^Server' "$ZIEL/etc/pacman.d/mirrorlist" 2>/dev/null || printf 'Server 
 rm -rf "$ZIEL/srv/usrside"
 cp -a "$REPO" "$ZIEL/srv/usrside"
 chmod 755 "$ZIEL/srv/usrside"
+# das Repo baut der Nutzer bau: im Rootfs gehört es root (Besitzerprüfung in abbild, Befund t1 PROFIL=minimal)
+chown -R 0:0 "$ZIEL/srv/usrside"
 rm -rf "$ZIEL/var/cache/pacman/pkg/"*
 # Schlüsselbund (archlinux-keyring bringt die Schlüssel, initialisiert aber nicht)
 inch pacman-key --init >/dev/null 2>&1
