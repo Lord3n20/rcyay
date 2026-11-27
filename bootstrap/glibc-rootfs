@@ -20,10 +20,12 @@
 #   INIT      Init in /etc/rcyay.conf (runit, Standard); die Dienste werden trotzdem für alle Inits eingeschaltet
 #   EXTRA     weitere Pakete (z. B. "niri foot mesa")
 #   NUTZER    baut mit makepkg (Standard bau)        REPO  Repo-Ordner (Standard /var/tmp/usrside/glibc/repo)
-#   BOOTSTRAP_REF  git-Ref mit den Paketen von rcyay-e2 (Standard bootstrap)    NEU_BAUEN=1  Repo neu bauen
+#   BOOTSTRAP_REF  git-Ref mit den Paketen von rcyay-e2 (Standard bootstrap), GITQUELLE git-Ordner (Standard der Baum)    NEU_BAUEN=1  Repo neu bauen
 set -euo pipefail
 HIER=$(cd "$(dirname "$0")" && pwd)
 SRC=$(cd "$HIER/.." && pwd)
+# git-Repo für die Pakete von rcyay-e2 (in einer VM ist ein Worktree-Ordner ohne gültiges .git: GITQUELLE=/root/rcyay)
+GITQUELLE=${GITQUELLE:-$SRC}
 ARBEIT=${ARBEIT:-/var/tmp/usrside/glibc}
 ZIEL=${1:-$ARBEIT/rootfs}
 REPO=${REPO:-$ARBEIT/repo}
@@ -67,7 +69,7 @@ bauen() {
 	if [[ $quelle == main ]]; then
 		cp -r "$SRC/pkg/$name/." "$d/"
 	else
-		git -c safe.directory='*' -C "$SRC" archive "$BOOTSTRAP_REF" "bootstrap/pakete/$name" |
+		git -c safe.directory='*' -C "$GITQUELLE" archive "$BOOTSTRAP_REF" "bootstrap/pakete/$name" |
 			tar -x -C "$d" --strip-components=3
 		# musl-Variante → glibc: nur die Laufzeit-Abhängigkeit tauschen
 		sed -i -E '/^(make)?depends=/s/\bmusl\b/glibc/' "$d/PKGBUILD"
@@ -200,6 +202,8 @@ grep -q '^Server' "$ZIEL/etc/pacman.d/mirrorlist" 2>/dev/null || printf 'Server 
 rm -rf "$ZIEL/srv/usrside"
 cp -a "$REPO" "$ZIEL/srv/usrside"
 chmod 755 "$ZIEL/srv/usrside"
+# das Repo baut der Nutzer bau: im Rootfs gehört es root (Besitzerprüfung in abbild, Befund t1 PROFIL=minimal)
+chown -R 0:0 "$ZIEL/srv/usrside"
 rm -rf "$ZIEL/var/cache/pacman/pkg/"*
 # Schlüsselbund (archlinux-keyring bringt die Schlüssel, initialisiert aber nicht)
 inch pacman-key --init >/dev/null 2>&1

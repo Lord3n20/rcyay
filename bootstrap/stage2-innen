@@ -111,6 +111,15 @@ pkgbuild_holen() {
 	eigen)
 		printf '%s\n' "/usrside/bootstrap/pakete/$name"
 		;;
+	rcyay)
+		# pkg/NAME aus dem rcyay-Stand von bootstrap/pakete/rcyay (rcyay-src.tar.gz, siehe stage2)
+		d=$BAU/rcyay-baum
+		rm -rf "$d"
+		mkdir -p "$d"
+		bsdtar -xf "$PKGQ/eigen/rcyay/rcyay-src.tar.gz" -C "$d"
+		[[ -f $d/rcyay/pkg/$name/PKGBUILD ]] || abbruch "$name: rcyay/pkg/$name/PKGBUILD fehlt"
+		printf '%s\n' "$d/rcyay/pkg/$name"
+		;;
 	arch:*)
 		tag=${herkunft#arch:}
 		datei=$PKGQ/arch/$name-$tag.tar.gz
@@ -140,6 +149,8 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	chown -R bau:bau "$ziel"
 	# C.UTF-8: bsdtar scheitert sonst an UTF-8-Dateinamen (gcc-Testsuite)
 	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH LC_ALL=C.UTF-8 LANG=C.UTF-8"
+	# usrside-init liest etc/rcyay.conf aus dem rcyay-Baum
+	[[ $herkunft == rcyay ]] && env+=" RCYAY_SRC=$BAU/rcyay-baum/rcyay"
 	# alten Bauordner eines fehlgeschlagenen Laufs weg: makepkg packt nur darüber aus, erzeugte Dateien
 	# (z. B. libpngs pnglibconf.h) blieben sonst stehen
 	rm -rf /var/tmp/bau/"$name"
@@ -148,9 +159,15 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	local f liste=()
 	while IFS= read -r f; do [[ -e $f ]] && liste+=("$f"); done <<<"$dateien"
 	((${#liste[@]})) || abbruch "$name: makepkg hat keine Pakete erzeugt"
+	# /usr/lib64, /lib64, /usr/sbin und /sbin sind Symlinks (filesystem); ein Paket mit echten Dateien dort würde sie durch Ordner
+	# ersetzen (pacman --overwrite) – z. B. cmake-GNUInstallDirs ohne /etc/arch-release → CMAKE_INSTALL_LIBDIR=lib
+	for f in "${liste[@]}"; do
+		if bsdtar -tf "$f" | grep -qE '^(usr/)?(lib64|sbin)/.'; then abbruch "$name: $f enthält Dateien unter lib64 oder sbin"; fi
+	done
 	[[ $flags == *-ohne-install* ]] && return 0
 	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
-	"$(paketmanager)" -U --noconfirm --overwrite '*' -dd "${liste[@]}"
+	# --ask 4: Konflikte (z. B. rust ↔ rust-saat) mit Ja beantworten, also das alte Paket entfernen
+	"$(paketmanager)" -U --noconfirm --ask 4 --overwrite '*' -dd "${liste[@]}"
 	rm -rf /var/tmp/bau/"$name"
 }
 
@@ -175,6 +192,11 @@ while read -r name herkunft rest; do
 		case $f in -*) flags+=" $f" ;; *) sum=$f ;; esac
 	done
 	if ((${#wahl[@]})) && [[ " ${wahl[*]} " != *" $name "* ]]; then continue; fi
+	# „vorbau“: Vorbau-Werkzeug (v_NAME) an dieser Stelle neu bauen, z. B. python mit _ctypes, sobald libffi da ist
+	if [[ $herkunft == vorbau ]]; then
+		schritt "stage2-$name-vorbau-neu" "v_$name"
+		continue
+	fi
 	schritt "stage2-$name-${herkunft//[:\/]/_}" paket "$name" "$herkunft" "$sum" "$flags"
 done <"/usrside/bootstrap/${LISTE:-stage2-liste}"
 NEU=1 schritt stage2-repo repo_aktualisieren

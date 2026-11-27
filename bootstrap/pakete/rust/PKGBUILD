@@ -1,0 +1,131 @@
+# rust (M5): rustc + cargo + clippy + rustfmt + rustdoc + rust-src aus Quellen, für x86_64-unknown-linux-musl
+# als dynamisch gelinkter Host (crt-static = false, sonst lädt rustc keine proc-macros), gegen das eigene llvm
+# (link-shared). stage0 ist rust-saat (gleiche Version → local-rebuild). Eigenes PKGBUILD statt Arch-rust: Arch baut
+# mit PGO neun Teilpakete für glibc/musl/aarch64/wasm/i686 (lib32-glibc, wasi-libc, aarch64-Kreuzcompiler, compiler-rt)
+# und patcht die Ziele auf *-pc-linux-gnu. Übernommen: Quelle/Prüfsumme 1.100.0 und die Arch-Patches 0003 (system stage0) und 0008 (lib vor lib64).
+# Nicht gebaut: profiler/sanitizers (bräuchten compiler-rt), Doku, rust-analyzer.
+pkgname=rust
+pkgver=1.100.0
+pkgrel=1
+epoch=1
+pkgdesc='Systems programming language focused on safety, speed and concurrency (musl)'
+arch=(x86_64)
+url='https://www.rust-lang.org/'
+license=('Apache-2.0 OR MIT')
+depends=(musl gcc curl openssl zlib llvm)
+makedepends=(rust-saat cmake ninja python perl pkgconf)
+provides=("cargo=$epoch:$pkgver" "rustc=$epoch:$pkgver" "rustfmt=$epoch:$pkgver" "rust-src=$epoch:$pkgver")
+conflicts=(rust-saat cargo)
+replaces=(rust-saat)
+options=(!emptydirs !lto !debug)
+source=("https://static.rust-lang.org/dist/rustc-$pkgver-src.tar.xz"
+	0003-bootstrap-Workaround-for-system-stage0.patch
+	0008-compiler-Swap-primary-and-secondary-lib-dirs.patch)
+sha256sums=('90dab90b8084eb57c35ae2b1d0b70c8e5138ace6023b22c60a5a400f586f63b2'
+	'c2b73bcba4d80ec8e5a5bcede045cb6f4a412d38be2d9632e29a181e1110dba9'
+	'2b409e7b8ad9dce9332d8046efeecb0300851f450a2cec1074942c2cb237d50a')
+
+prepare() {
+	cd "rustc-$pkgver-src"
+	patch -Np1 -i ../0003-bootstrap-Workaround-for-system-stage0.patch
+	# rustc nimmt lib64 vor lib, sobald <sysroot>/lib64/rustlib existiert – bei uns ist /usr/lib64 ein Symlink auf lib
+	patch -Np1 -i ../0008-compiler-Swap-primary-and-secondary-lib-dirs.patch
+	# stage0 = rust-saat mit eigenem Sysroot ohne lib64. Das unveränderte Saat-rustc meldet sonst /usr/lib64/rustlib
+	# als target-libdir, bootstrap legt dann stage0-sysroot/lib64 an und findet `core` nicht. Der Sysroot folgt dem
+	# Ort von librustc_driver (auch über Kopien/Symlinks bleibt er /usr), deshalb ein Hüllskript mit --sysroot.
+	mkdir -p "$srcdir/stage0/bin" "$srcdir/stage0/lib"
+	ln -sfn /usr/lib/rustlib "$srcdir/stage0/lib/rustlib"
+	ln -sfn /usr/bin/cargo "$srcdir/stage0/bin/cargo"
+	cat >"$srcdir/stage0/bin/rustc" <<END
+#!/bin/sh
+for a in "\$@"; do case \$a in --sysroot | --sysroot=*) exec /usr/bin/rustc "\$@" ;; esac; done
+exec /usr/bin/rustc --sysroot "$srcdir/stage0" "\$@"
+END
+	chmod 755 "$srcdir/stage0/bin/rustc"
+	cat >bootstrap.toml <<END
+profile = "dist"
+change-id = 162423
+
+[llvm]
+download-ci-llvm = false
+link-shared = true
+
+[gcc]
+download-ci-gcc = false
+
+[build]
+description = "UsrsideOS $epoch:$pkgver-$pkgrel"
+build = "x86_64-unknown-linux-musl"
+host = ["x86_64-unknown-linux-musl"]
+target = ["x86_64-unknown-linux-musl"]
+cargo = "$srcdir/stage0/bin/cargo"
+rustc = "$srcdir/stage0/bin/rustc"
+local-rebuild = true
+locked-deps = true
+vendor = true
+extended = true
+tools = ["cargo", "clippy", "rustdoc", "rustfmt", "rust-src"]
+sanitizers = false
+profiler = false
+docs = false
+
+[install]
+prefix = "/usr"
+sysconfdir = "etc"
+
+[rust]
+channel = "stable"
+codegen-units-std = 1
+debuginfo-level = 0
+rpath = false
+frame-pointers = true
+lld = false
+llvm-bitcode-linker = false
+deny-warnings = false
+backtrace-on-ice = true
+
+[dist]
+compression-formats = ["gz"]
+compression-profile = "fast"
+
+[target.x86_64-unknown-linux-musl]
+llvm-config = "/usr/bin/llvm-config"
+crt-static = false
+musl-root = "/usr"
+cc = "gcc"
+cxx = "g++"
+ar = "gcc-ar"
+ranlib = "gcc-ranlib"
+linker = "gcc"
+END
+}
+
+build() {
+	cd "rustc-$pkgver-src"
+	# makepkg.conf setzt RUSTFLAGS=-C target-feature=-crt-static für Fremdpakete; bootstrap steuert das selbst
+	unset CFLAGS CXXFLAGS LDFLAGS RUSTFLAGS
+	export RUST_BACKTRACE=1
+	DESTDIR="$srcdir/dest" python ./x.py install -j "$(nproc)"
+
+	# Rauchtest: der neue rustc/cargo baut ein Programm mit proc-macro (braucht dynamisches rustc)
+	local d=$srcdir/dest/usr t=$srcdir/rauch
+	rm -rf "$t"
+	mkdir -p "$t/m/src" "$t/a/src"
+	printf '[package]\nname="m"\nversion="0.1.0"\nedition="2021"\n[lib]\nproc-macro=true\n' >"$t/m/Cargo.toml"
+	printf 'use proc_macro::TokenStream;\n#[proc_macro]\npub fn hallo(_: TokenStream) -> TokenStream { "\\"hallo-rust\\"".parse().unwrap() }\n' >"$t/m/src/lib.rs"
+	printf '[package]\nname="a"\nversion="0.1.0"\nedition="2021"\n[dependencies]\nm={path="../m"}\n' >"$t/a/Cargo.toml"
+	printf 'fn main(){println!("{}", m::hallo!());}\n' >"$t/a/src/main.rs"
+	(cd "$t/a" && LD_LIBRARY_PATH="$d/lib" RUSTC="$d/bin/rustc" CARGO_HOME="$t/ch" "$d/bin/cargo" run --offline -q) |
+		tee "$t/aus"
+	[[ $(cat "$t/aus") == hallo-rust ]]
+}
+
+package() {
+	cp -a "$srcdir/dest/." "$pkgdir/"
+	cd "$pkgdir"
+	rm -f etc/target-spec-json-schema.json
+	rm -f usr/lib/rustlib/{components,install.log,rust-installer-version,uninstall.sh} usr/lib/rustlib/manifest-*
+	rm -rf usr/share/doc
+	install -Dm644 "$srcdir/rustc-$pkgver-src/LICENSE-APACHE" "$srcdir/rustc-$pkgver-src/LICENSE-MIT" \
+		-t "usr/share/licenses/$pkgname"
+}

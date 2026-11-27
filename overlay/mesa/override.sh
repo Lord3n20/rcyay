@@ -1,6 +1,6 @@
-# Stufe 2b ohne LLVM: nur virgl (VM mit virtio-gpu gl=on) und softpipe; Wayland/EGL/GBM/GLES2, kein GLX/X11,
-# kein libglvnd (mesa liefert libEGL/libGLESv2 selbst), kein Vulkan, kein VA. iris/crocus/llvmpipe/anv brauchen
-# CLC (LLVM + clang + libclc + SPIRV-LLVM-Translator) → kommen mit llvm in Stufe 2c.
+# Stufe 2b: virgl (VM mit virtio-gpu gl=on) und softpipe; Stufe 2d: + llvmpipe (LLVM aus bootstrap/pakete/llvm);
+# Stufe 2e: + iris/crocus (Intel, CLC aus clang + SPIRV-LLVM-Translator + SPIRV-Tools + libclc). Wayland/EGL/GBM/GLES2,
+# kein GLX/X11, kein libglvnd (mesa liefert libEGL/libGLESv2 selbst), kein Vulkan (anv folgt), kein VA.
 # Python-Module für den Bau (mako, markupsafe, packaging, pyyaml) als Quell-Tarballs über PYTHONPATH,
 # damit sie nicht als Pakete für das Vorbau-python nötig sind.
 source=("https://archive.mesa3d.org/mesa-$_pkgver.tar.xz"
@@ -16,7 +16,7 @@ sha256sums=(4e4e438eac7b840a9383988cbb7c08dad8041da544b9319fc26d319fa7348961
 for _a in b2sums sha512sums md5sums; do unset "$_a"; done
 unset validpgpkeys
 usrside_ohne clang-libs directx-headers libelf libglvnd libva libx11 libxcb libxext libxshmfence libxxf86vm \
-	llvm llvm-libs lm_sensors spirv-tools spirv-llvm-translator libclc glslang cbindgen rust rust-bindgen \
+	lm_sensors glslang cbindgen rust rust-bindgen \
 	python-mako python-packaging python-ply python-yaml python-pycparser python-sphinx python-sphinx-hawkmoth \
 	valgrind cmake elfutils clang libxrandr vulkan-icd-loader xcb-util-keysyms venus-protocol python-lxml xorgproto
 usrside_nur mesa
@@ -24,16 +24,16 @@ prepare() { :; }
 build() {
 	export PYTHONPATH="$srcdir/mako-1.3.10:$srcdir/markupsafe-3.0.2/src:$srcdir/packaging-25.0/src:$srcdir/pyyaml-6.0.2/lib"
 	CFLAGS+=" -ffat-lto-objects" CXXFLAGS+=" -ffat-lto-objects"
-	arch-meson "mesa-$_pkgver" build -D platforms=wayland -D gallium-drivers=virgl,softpipe -D vulkan-drivers= \
-		-D glvnd=disabled -D llvm=disabled -D gbm=enabled -D egl=enabled -D gles1=disabled -D gles2=enabled \
+	arch-meson "mesa-$_pkgver" build -D platforms=wayland -D gallium-drivers=virgl,softpipe,llvmpipe,iris,crocus -D vulkan-drivers= \
+		-D glvnd=disabled -D llvm=enabled -D shared-llvm=enabled -D gbm=enabled -D egl=enabled -D gles1=disabled -D gles2=enabled \
 		-D glx=disabled -D opengl=true -D valgrind=disabled -D libunwind=disabled -D lmsensors=disabled \
 		-D gallium-va=disabled -D video-codecs= -D android-libbacktrace=disabled -D xmlconfig=enabled \
-		-D zstd=enabled -D expat=enabled -D teflon=false -D precomp-compiler=auto -D spirv-tools=disabled \
+		-D zstd=enabled -D expat=enabled -D teflon=false -D precomp-compiler=auto -D spirv-tools=enabled \
 		-D gallium-rusticl=false -D microsoft-clc=disabled -D intel-rt=disabled -D tools= -D build-tests=false
 	meson compile -C build
 }
 package_mesa() {
-	depends=(expat musl libdrm gcc wayland zlib zstd)
+	depends=(expat musl libdrm gcc wayland zlib zstd llvm spirv-tools)
 	optdepends=()
 	provides=("mesa-libgl=$epoch:$pkgver-$pkgrel" opengl-driver libegl libgles libgbm libEGL.so libGLESv2.so libgbm.so)
 	meson install -C build --destdir "$pkgdir" --no-rebuild

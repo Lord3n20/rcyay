@@ -1,0 +1,51 @@
+# libclc (M5 iris): OpenCL-C-Bitcode für mesa (iris/crocus-CLC, später rusticl). Eigenes PKGBUILD, weil Arch libclc
+# als Teilpaket des großen llvm-PKGBUILDs baut (siehe bootstrap/pakete/llvm). Quelle wie llvm (gleicher Tarball,
+# gleiche Prüfsumme), gebaut mit dem installierten clang + llvm-spirv (spirv-llvm-translator) wie bei Arch.
+# Nur die SPIR-V-Ziele: mesa braucht spirv-mesa3d-/spirv64-mesa3d-; amdgcn/nvptx (nur für Offload) entfallen.
+pkgname=libclc
+pkgver=23.1.5
+pkgrel=1
+pkgdesc='Library requirements of the OpenCL C programming language (SPIR-V)'
+arch=(any)
+url='https://libclc.llvm.org/'
+license=('Apache-2.0 WITH LLVM-exception')
+makedepends=(cmake ninja python "llvm=$pkgver" spirv-llvm-translator spirv-tools)  # stage2 löst keine Abhängigkeiten der makedepends auf
+options=(!lto !debug !strip)
+source=("https://github.com/llvm/llvm-project/releases/download/llvmorg-$pkgver/llvm-project-$pkgver.src.tar.xz")
+sha256sums=('fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e')
+_ziele=(spirv32-unknown-unknown spirv64-unknown-unknown)
+
+build() {
+	cd "llvm-project-$pkgver.src"
+	local z
+	for z in "${_ziele[@]}"; do
+		cmake -S libclc -B "build-$z" -G Ninja \
+			-DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX=/usr \
+			-DCMAKE_C_COMPILER=clang \
+			-DCMAKE_CXX_COMPILER=clang++ \
+			-DLLVM_DEFAULT_TARGET_TRIPLE="$z"
+		cmake --build "build-$z"
+	done
+}
+
+package() {
+	cd "llvm-project-$pkgver.src"
+	local z
+	for z in "${_ziele[@]}"; do DESTDIR="$pkgdir" cmake --install "build-$z"; done
+	# wie Arch: mesa sucht die alten flachen Namen und libclc.pc
+	ln -s spirv32-unknown-unknown/libclc.spv "$pkgdir/usr/share/clc/spirv-mesa3d-.spv"
+	ln -s spirv64-unknown-unknown/libclc.spv "$pkgdir/usr/share/clc/spirv64-mesa3d-.spv"
+	install -Dm644 /dev/stdin "$pkgdir/usr/share/pkgconfig/libclc.pc" <<END
+prefix=/usr
+datarootdir=/usr/share
+datadir=/usr/share
+pkgdatadir=\${datadir}/clc
+libexecdir=\${pkgdatadir}
+
+Name: libclc
+Description: Library requirements of the OpenCL C programming language
+Version: $pkgver
+END
+	install -Dm644 libclc/LICENSE.TXT "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
