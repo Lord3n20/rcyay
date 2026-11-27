@@ -12,7 +12,9 @@ usrside_ohne avahi bluez-libs dconf doxygen fftw git glib2-devel graphviz gst-pl
 usrside_nur pipewire
 prepare() { :; }
 build() {
-	arch-meson pipewire build -D auto_features=disabled \
+	# wie arch-meson, aber --auto-features=disabled (nur ausdrücklich Eingeschaltetes)
+	meson setup --prefix=/usr --libexecdir=lib --sbindir=bin --buildtype=plain --auto-features=disabled \
+		--wrap-mode=nodownload -D b_pie=true -D python.bytecompile=1 pipewire build \
 		-D docs=disabled -D man=disabled -D examples=disabled -D tests=disabled -D installed_tests=disabled \
 		-D spa-plugins=enabled -D alsa=enabled -D audiomixer=enabled -D audioconvert=enabled \
 		-D control=enabled -D support=enabled -D volume=enabled -D audiotestsrc=enabled -D videoconvert=enabled \
