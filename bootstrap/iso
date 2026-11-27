@@ -150,7 +150,12 @@ spiegel() {
 	while read -r repo datei; do
 		case $repo in core | extra | multilib) ;; *) continue ;; esac # usrside liegt in /srv/usrside
 		[[ -f $I/spiegel-cache/$datei ]] || abbruch "Spiegel: $datei nicht geladen"
-		ln -f "$I/spiegel-cache/$datei" "$d/$repo/$datei" 2>/dev/null || cp "$I/spiegel-cache/$datei" "$d/$repo/"
+		# pacman 7 lädt die .sig-Datei neben dem Paket (Offline-Probe: ohne sie scheitert die Installation)
+		[[ -f $I/spiegel-cache/$datei.sig ]] || abbruch "Spiegel: Signatur $datei.sig nicht geladen"
+		local f
+		for f in "$datei" "$datei.sig"; do
+			ln -f "$I/spiegel-cache/$f" "$d/$repo/$f" 2>/dev/null || cp "$I/spiegel-cache/$f" "$d/$repo/"
+		done
 		n=$((n + 1))
 	done <"$I/spiegel.liste"
 	# Datenbanken unverändert von Arch (Signaturen der Pakete stehen darin)
