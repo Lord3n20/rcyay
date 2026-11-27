@@ -148,6 +148,11 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	local f liste=()
 	while IFS= read -r f; do [[ -e $f ]] && liste+=("$f"); done <<<"$dateien"
 	((${#liste[@]})) || abbruch "$name: makepkg hat keine Pakete erzeugt"
+	# /usr/lib64 und /lib64 sind Symlinks (filesystem); ein Paket mit echten Dateien dort würde sie durch Ordner
+	# ersetzen (pacman --overwrite) – z. B. cmake-GNUInstallDirs ohne /etc/arch-release → CMAKE_INSTALL_LIBDIR=lib
+	for f in "${liste[@]}"; do
+		if bsdtar -tf "$f" | grep -qE '^(usr/)?lib64/.'; then abbruch "$name: $f enthält Dateien unter lib64"; fi
+	done
 	[[ $flags == *-ohne-install* ]] && return 0
 	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
 	"$(paketmanager)" -U --noconfirm --overwrite '*' -dd "${liste[@]}"
