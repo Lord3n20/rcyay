@@ -174,6 +174,18 @@ aufraeumen_one rc-hello
 yes y | head -n 50 | R -S rc-hello; r=$?
 check "gepipte Antworten reichen bis zur Installation" bash -c "[ $r = 0 ] && pacman -Q rc-hello >/dev/null"
 
+# Snapshot als HTTP 200 ohne Körper: einmal neu laden, beim zweiten Mal klarer Fehler
+aufraeumen_one rc-hello
+echo 1 > "$W/aur/rc-hello.leer"
+R -S --noconfirm rc-hello; r=$?
+check "leerer Snapshot: neu geladen und installiert" bash -c "[ $r = 0 ] && pacman -Q rc-hello >/dev/null"
+check "leerer Snapshot: Warnung" has "archive is empty.*downloading again"
+aufraeumen_one rc-hello
+echo 2 > "$W/aur/rc-hello.leer"
+R -S --noconfirm rc-hello; r=$?
+check "zweimal leer: Abbruch mit HTTP-Status und Größe" bash -c "[ $r != 0 ] && grep -q 'HTTP 200, 0 bytes' '$W/out'"
+rm -f "$W/aur/rc-hello.leer"
+
 # ---------- Prüfung vor dem Bau ----------
 printf 'y\nn\n' | R -S rc-install; r=$?
 check "Ablehnen nach PKGBUILD-Anzeige bricht ab" bash -c "[ $r != 0 ] && ! pacman -Q rc-install >/dev/null 2>&1"

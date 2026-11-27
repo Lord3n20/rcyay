@@ -148,6 +148,21 @@ int main(void)
 		CHECK(aur_extract(path, dest, 0, e, sizeof(e)) == -1);
 		snprintf(path, sizeof(path), "%s/fehlt.tar.gz", tmp);
 		CHECK(aur_extract(path, dest, 1, e, sizeof(e)) == -1);
+		/* HTTP 200 ohne Körper (0 Byte) und ein Archiv nur mit dem obersten Ordner: kein Snapshot */
+		{
+			const char *nurordner[] = { "foo/", NULL };
+			const char *keine[] = { NULL };
+			FILE *f;
+			snprintf(path, sizeof(path), "%s/leer.tar.gz", tmp);
+			CHECK((f = fopen(path, "w")) != NULL && fclose(f) == 0);
+			CHECK(aur_extract(path, dest, 1, e, sizeof(e)) == -1 && strstr(e, "empty"));
+			snprintf(path, sizeof(path), "%s/ordner.tar.gz", tmp);
+			make_tar(path, nurordner);
+			CHECK(aur_extract(path, dest, 1, e, sizeof(e)) == -1 && strstr(e, "empty"));
+			snprintf(path, sizeof(path), "%s/null.tar.gz", tmp);
+			make_tar(path, keine);
+			CHECK(aur_extract(path, dest, 1, e, sizeof(e)) == -1);
+		}
 		snprintf(path, sizeof(path), "rm -rf '%s'", tmp);
 		CHECK(system(path) == 0);
 	}
