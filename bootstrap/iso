@@ -70,6 +70,8 @@ RFS=$ARBEIT/glibc/abbild-rootfs
 meldung "Live-Einstellungen"
 printf '# Live-System: / ist overlayfs (squashfs + tmpfs), keine Platten-Einträge\n' >"$RFS/etc/fstab"
 printf 'usrside-live\n' >"$RFS/etc/hostname"
+# resolv.conf schreibt openresolv (dhcpcd/iwd); eine statische Datei ergibt „resolvconf: signature mismatch“ (Befund t1)
+rm -f "$RFS/etc/resolv.conf"
 # root ohne Passwort an der Konsole (wie Arch-ISO); sshd lässt leere Passwörter nicht zu (PermitEmptyPasswords no)
 sed -i 's/^root:[^:]*:/root::/' "$RFS/etc/shadow"
 grep -q '^PermitEmptyPasswords yes' "$RFS/etc/ssh/sshd_config" && abbruch "sshd_config erlaubt leere Passwörter"
