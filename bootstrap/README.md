@@ -103,8 +103,12 @@ hmac(…), cmac(aes), ecb/cbc/ctr(aes), ecb(des), cbc(des3_ede), ecb(arc4); keyc
 asymmetrische Schlüssel X.509 und PKCS#8 + PKEY_QUERY. Abbild-Kernel 2 (26.11.): alles da außer ecb(arc4) →
 ab abbild-kernel-3 `CRYPTO_ARC4`, `CRYPTO_USER_API_ENABLE_OBSOLETE`, `CRYPTO_CTR` im Fragment.
 Abbild-Kernel 3 (27.11., Abbild f564bd53): alles ok **außer weiterhin ecb(arc4)** (bind → ENOENT), obwohl
-`CRYPTO_ARC4=y`, `ECB=y`, `USER_API_ENABLE_OBSOLETE=y` gesetzt und arc4.o gebaut ist (arc4 ist seit 6.x ein lskcipher,
-`ecb(arc4)` entsteht über die ecb-Vorlage) – offen. Betrifft in iwd nur TKIP/WPA1 und alte EAP-Verfahren, WPA2/WPA3 nicht.
+`CRYPTO_ARC4=y`, `ECB=y`, `USER_API_ENABLE_OBSOLETE=y` gesetzt und arc4.o gebaut ist.
+**Ursache (27.11.):** Seit Linux 7.3 lässt AF_ALG nur eine feste Liste zu (`crypto/algif_skcipher.c` `skcipher_allowlist`,
+sysctl `crypto.af_alg_restrict`, Vorgabe 1); `ecb(arc4)` steht nicht darauf, `af_alg_check_restriction()` liefert absichtlich
+ENOENT. Entscheidung: Vorgabe 1 bleibt (AF_ALG ist eine häufige Lückenquelle); TKIP/WPA1 und alte EAP-Verfahren in iwd gehen
+damit nicht, WPA2/WPA3 schon. Wer WPA1 braucht: `sysctl crypto.af_alg_restrict=0`. Der Test erwartet deshalb ENOENT bei
+restrict=1 und prüft zusätzlich mit restrict=0, dass der Kernel `ecb(arc4)` wirklich hat (Fragment bleibt).
 
 ### Inits im Abbild (Paket `usrside-dienste`)
 Alle drei liegen im selben Abbild, gewählt wird mit `init=`:
