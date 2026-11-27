@@ -44,4 +44,5 @@ libinput             arch:1.32.0-2             5683ac1b73302c6751a34a4e8cc21f524
 flex                 arch:2.7.6-1              56f3f67fc801034e20b8f11b8281bf79b80ef2462103421b2ae0fcb58523ec7f
 mesa                 arch:1-26.3.1-3           786ee0bc3e5d1d4fc43e341eef52afdcbe66110f78724ccd3fa5ca42fdc2616b
 pango                arch:1-1.58.2-1           139ddbeb262508cb43110c0ad6d659902ab32b0403eb43fc20b27b446a23af6c
+ttf-dejavu           arch:2.37+18+g9b5d1b2f-8  e277025f511c4acfbcfa3637b0b6cc7e5f376e29757245291e457596967eb0d4
 niri                 arch:26.04-1              4e4215ac5f1a16dee1700a8bb668fff115a585a2fd4b9856c6fd0761930e7826
