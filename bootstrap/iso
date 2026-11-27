@@ -120,7 +120,22 @@ spiegel() {
 		echo "$p"' _ "$RFS/usr/share/usrside-installer/os/usrside.sh")
 	[[ -n $pakete ]] || abbruch "Paketliste des Installers leer"
 	# usrkrnl/setup + DKMS im Zielsystem (Befund e1e): Bauwerkzeuge, die nicht ausdrücklich in BASE/KERNEL_PKGS stehen
-	pakete+=" $AUR_DEPS patch xz flex bison libelf ${OFFLINE_EXTRA:-}"
+	pakete+=" $AUR_DEPS patch xz flex bison libelf pahole iucode-tool lib32-nvidia-utils ${OFFLINE_EXTRA:-}"
+	# dazu per Skript: die Pakete aller Werkzeuge, die usrkrnl/setup prüft (pacman -F des Bauwirts)
+	local s=$RFS/usr/share/usrside-installer/usrkrnl/setup t p tools
+	tools=$({
+		sed -n 's/^for t in \(.*\); do$/\1/p' "$s"
+		sed -n 's/^LLVM_TOOLS=(\(.*\))$/\1/p' "$s"
+		grep -A1 "sh -c 'for t; do command -v" "$s" | tail -n1 | sed 's/).*//'
+		echo iucode_tool dkms
+	} | tr '[:blank:]' '\n' | grep -v '^$' | sort -u)
+	[[ $(wc -w <<<"$tools") -gt 20 ]] || abbruch "Werkzeugliste aus $s zu kurz: $tools"
+	pacman -Fy >/dev/null 2>&1 || :
+	for t in $tools; do
+		p=$(pacman -Fq "/usr/bin/$t" 2>/dev/null | head -n1 | sed 's|.*/||')
+		[[ -n $p ]] || abbruch "kein Paket für Werkzeug $t (usrkrnl/setup)"
+		pakete+=" $p"
+	done
 	meldung "Offline-Spiegel: $pakete"
 	local P=(pacman --config "$konf" --dbpath "$w" -r "$r" --noconfirm --cachedir "$I/spiegel-cache")
 	"${P[@]}" -Sy >/dev/null
@@ -141,6 +156,22 @@ spiegel() {
 		cp "$w/sync/$repo.db" "$d/$repo/$repo.db"
 	done
 	meldung "Offline-Spiegel: $n Pakete, $(du -sh "$d" | cut -f1)"
+	# Probe wie offline: nur file://-Server (Spiegel, usrside, usrside-aur), leerer Cache – jede fehlende Datei bricht ab
+	local ok=$I/offline-probe aur=""
+	rm -rf "$ok"
+	mkdir -p "$ok"/{db,wurzel/var/lib/pacman,cache}
+	sed -e '/^Include = \/etc\/pacman.d\/mirrorlist/d' -e "/^\[\(core\|extra\|multilib\)\]/a Server = file://$d/\$repo" \
+		"$konf" >"$ok/pacman.conf"
+	if [[ -s $I/aur/usrside-aur.db.tar.zst ]]; then
+		printf '\n[usrside-aur]\nSigLevel = Optional TrustAll\nServer = file://%s\n' "$I/aur" >>"$ok/pacman.conf"
+		aur=$(tar -tf "$I/aur/usrside-aur.db.tar.zst" | sed -n 's|^\([^/]*\)-[^-]*-[^-]*/$|\1|p' | tr '\n' ' ')
+	fi
+	local Q=(pacman --config "$ok/pacman.conf" --dbpath "$ok/db" -r "$ok/wurzel" --noconfirm --cachedir "$ok/cache")
+	"${Q[@]}" -Sy >/dev/null
+	# shellcheck disable=SC2086
+	"${Q[@]}" -Sw $pakete $aur >"$ok/log" 2>&1 || { tail -n 20 "$ok/log"; abbruch "Offline-Probe: Pakete fehlen im Spiegel"; }
+	rm -rf "$ok/cache"
+	meldung "Offline-Probe bestanden (nur Medium): Installer-Pakete, usrkrnl-Werkzeuge, AUR: ${aur:-keine}"
 }
 
 # AUR-Pakete der Installer-Optionen (ohne Browser und OFFLINE_OHNE) fertig gebaut als Repo usrside-aur;
