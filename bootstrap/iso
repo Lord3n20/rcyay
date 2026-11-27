@@ -123,6 +123,10 @@ spiegel() {
 		for k in "${!PKG[@]}"; do [[ " $OHNE " == *" $k "* ]] || p+=" ${PKG[$k]}"; done
 		echo "$p"' _ "$RFS/usr/share/usrside-installer/os/usrside.sh")
 	[[ -n $pakete ]] || abbruch "Paketliste des Installers leer"
+	# ohne systemd ersetzt os_prepare PKG[polkit] (hyprpolkitagent → polkit-gnome, Befund t1)
+	pakete+=" polkit-gnome"
+	# Trockenlauf des Installers (install --print-packages): genau seine Liste aller Profile/Inits/Optionen
+	[[ -z $INST_LISTE ]] || pakete+=" $(awk '$1 == "repo" {print $2}' <<<"$INST_LISTE" | tr '\n' ' ')"
 	# usrkrnl/setup + DKMS im Zielsystem (Befund e1e): Bauwerkzeuge, die nicht ausdrücklich in BASE/KERNEL_PKGS stehen
 	pakete+=" $AUR_DEPS patch xz flex bison libelf pahole iucode-tool lib32-nvidia-utils ${OFFLINE_EXTRA:-}"
 	# dazu per Skript: die Pakete aller Werkzeuge, die usrkrnl/setup prüft (pacman -F des Bauwirts)
@@ -186,6 +190,18 @@ spiegel() {
 # AUR-Pakete der Installer-Optionen (ohne Browser und OFFLINE_OHNE) fertig gebaut als Repo usrside-aur;
 # gebaut auf dem Arch-Bauwirt (glibc wie das Ziel) mit makepkg als Nutzer bau, Bauabhängigkeiten per pacman
 AUR_DEPS=""
+# Paketliste aus dem Installer selbst, wenn er den Trockenlauf kann: Zeilen "repo NAME" / "aur NAME"
+# (alle Profile, Inits und Optionen nach os_prepare); sonst die Arrays aus os/usrside.sh (Rückfall)
+INST_LISTE=""
+if INST_LISTE=$(env -i PATH="$PATH" HOME=/tmp OFFLINE_OHNE="$OFFLINE_OHNE" \
+	"$RFS/usr/share/usrside-installer/install" --print-packages 2>/dev/null) &&
+	grep -qE '^(repo|aur) [^ ]+$' <<<"$INST_LISTE"; then
+	INST_LISTE=$(grep -E '^(repo|aur) [^ ]+$' <<<"$INST_LISTE")
+	meldung "Paketliste aus install --print-packages: $(wc -l <<<"$INST_LISTE") Einträge"
+else
+	INST_LISTE=""
+	warnung "Installer ohne --print-packages: Paketliste aus den Arrays von os/usrside.sh"
+fi
 aur_bauen() {
 	local d=$I/aur q=$I/aur-quellen liste n info
 	rm -rf "$d" "$q"
