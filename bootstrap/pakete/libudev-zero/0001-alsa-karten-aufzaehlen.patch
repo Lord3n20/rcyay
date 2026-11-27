@@ -1,0 +1,44 @@
+--- a/udev_enumerate.c
++++ b/udev_enumerate.c
+@@ -263,14 +263,30 @@
+     return de->d_name[0] != '.';
+ }
+ 
++/* usrside: ALSA-Karten (/sys/class/sound/cardN) haben keinen dev-Eintrag und fehlen in /sys/dev/char;
++ * pipewire/alsa-udev sucht aber genau sie */
++static int filter_card(const struct dirent *de)
++{
++    return strncmp(de->d_name, "card", 4) == 0;
++}
++
++static int scan_devices_filter(struct udev_enumerate *udev_enumerate, const char *path,
++                               int (*filter)(const struct dirent *));
++
+ static int scan_devices(struct udev_enumerate *udev_enumerate, const char *path)
+ {
++    return scan_devices_filter(udev_enumerate, path, filter_dot);
++}
++
++static int scan_devices_filter(struct udev_enumerate *udev_enumerate, const char *path,
++                               int (*filter)(const struct dirent *))
++{
+     struct udev_enumerate_thread *thread;
+     pthread_mutex_t mutex;
+     int i, cnt, ret = 1;
+     struct dirent **de;
+ 
+-    cnt = scandir(path, &de, filter_dot, NULL);
++    cnt = scandir(path, &de, filter, NULL);
+ 
+     if (cnt == -1) {
+         return 0;
+@@ -328,6 +344,9 @@
+         }
+     }
+ 
++    /* fehlt der Ordner (kein CONFIG_SND), ist das kein Fehler */
++    scan_devices_filter(udev_enumerate, "/sys/class/sound", filter_card);
++
+     return 0;
+ }
+ 

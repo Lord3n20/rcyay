@@ -3,7 +3,7 @@
 # (+ Ton: virtio-snd, pipewire/wireplumber/pipewire-pulse)
 # als root starten, foot als erstes Fenster, Bildschirmfoto. Läuft auf dem Wirt (ist eine VM!).
 #   bootstrap/test/grafik-test [ABBILD_DIR]   (Standard ~/vm/rcyay/vms/bau-e2/aus, Variante musl, Init runit)
-# Umgebung: GT_PORT (2236; 2226 hat pruef), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
+# Umgebung: GT_PORT (2236; 2226 hat pruef), GT_WPDEBUG (wireplumber-Log, 2), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
 set -uo pipefail
 A=${1:-$HOME/vm/rcyay/vms/bau-e2/aus}
 PORT=${GT_PORT:-2236} INIT=${GT_INIT:-runit} CPUS=${GT_CPUS:-16-19}
@@ -69,7 +69,7 @@ chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n
 chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
 chk "SPA-ALSA-Plugin" "ls /usr/lib/spa-0.2/ /usr/lib/spa-0.2/alsa/ | tr '\\n' ' '; ls /usr/lib/libudev.so*"
 chk "pipewire + wireplumber starten" "export XDG_RUNTIME_DIR=/run/user/0; eval \$(dbus-daemon --session --fork --print-address=1 | sed 's/^/export DBUS_SESSION_BUS_ADDRESS=/'); env | grep DBUS_SESSION >/run/user/0/dbus.env;
-	setsid pipewire >/tmp/pw.log 2>&1 </dev/null & sleep 2; setsid wireplumber >/tmp/wp.log 2>&1 </dev/null & setsid pipewire-pulse >/tmp/pwp.log 2>&1 </dev/null & sleep 5; pgrep -x pipewire && pgrep -x wireplumber && pgrep -f pipewire-pulse"
+	setsid pipewire >/tmp/pw.log 2>&1 </dev/null & sleep 2; WIREPLUMBER_DEBUG=${GT_WPDEBUG:-2} setsid wireplumber >/tmp/wp.log 2>&1 </dev/null & setsid pipewire-pulse >/tmp/pwp.log 2>&1 </dev/null & sleep 5; pgrep -x pipewire && pgrep -x wireplumber && pgrep -f pipewire-pulse"
 chk "wpctl: ALSA-Sink (nicht Dummy)" "export XDG_RUNTIME_DIR=/run/user/0; wpctl status | sed -n '/Audio/,/Video/p' | head -n 20; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -m2 -E 'node.name|alsa'; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q alsa_output"
 chk "Pulse-Socket" "ls /run/user/0/pulse/native"
 s 'cat /tmp/pw.log /tmp/wp.log /tmp/pwp.log' >"$AUS/grafik-$ZEIT.ton.log" 2>&1
