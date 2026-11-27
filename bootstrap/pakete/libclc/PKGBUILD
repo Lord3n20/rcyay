@@ -9,7 +9,7 @@ pkgdesc='Library requirements of the OpenCL C programming language (SPIR-V)'
 arch=(any)
 url='https://libclc.llvm.org/'
 license=('Apache-2.0 WITH LLVM-exception')
-makedepends=(cmake ninja python "llvm=$pkgver" spirv-llvm-translator)
+makedepends=(cmake ninja python "llvm=$pkgver" spirv-llvm-translator spirv-tools)  # stage2 löst keine Abhängigkeiten der makedepends auf
 options=(!lto !debug !strip)
 source=("https://github.com/llvm/llvm-project/releases/download/llvmorg-$pkgver/llvm-project-$pkgver.src.tar.xz")
 sha256sums=('fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e')
