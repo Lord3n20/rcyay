@@ -555,6 +555,7 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 	struct archive *a, *ext;
 	struct archive_entry *entry;
 	int r = ARCHIVE_OK, ret = 0, flags, cwd;
+	unsigned long n = 0;
 	char *absarchive;
 
 	if(mkdir_p(dest) != 0) {
@@ -647,6 +648,7 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 		}
 		free(full);
 		free(hfull);
+		n++;
 		if(r != ARCHIVE_OK && r != ARCHIVE_WARN) {
 			snprintf(err, errlen, "%s: %s", archive,
 					archive_error_string(ext) ? archive_error_string(ext) : archive_error_string(a));
@@ -656,6 +658,12 @@ int aur_extract(const char *archive, const char *dest, int strip, char *err, siz
 	}
 	if(ret == 0 && r != ARCHIVE_EOF) {
 		snprintf(err, errlen, "%s: %s", archive, archive_error_string(a));
+		ret = -1;
+	}
+	/* libarchive liest eine leere Datei (HTTP 200 ohne Körper) als gültiges
+	 * leeres Archiv – ohne einen einzigen Eintrag ist das kein Snapshot */
+	if(ret == 0 && n == 0) {
+		snprintf(err, errlen, _("%s: archive is empty"), archive);
 		ret = -1;
 	}
 done:

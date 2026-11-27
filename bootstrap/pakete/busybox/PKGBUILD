@@ -1,0 +1,59 @@
+# BusyBox für die glibc-Variante (bootstrap/glibc-rootfs, Repo usrside vor core/extra).
+# Arch-busybox ist statisch gegen musl gebaut: fakeroot (LD_PRELOAD) erreicht seine Applets nicht, mit
+# PROFIL=minimal (BusyBox statt coreutils) scheitert dann package() jedes AUR-Pakets an chown/chmod/ln.
+# Hier: dieselbe Quelle wie Arch (1.36.1, gleiche Prüfsumme), dynamisch gegen glibc, defconfig wie
+# overlay/busybox (musl), dazu `ln -r`/`ln -t DIR` (0001-ln-relativ.patch, gleich in overlay/busybox):
+# der Hook von ca-certificates (update-ca-trust) ruft `ln -fsr -t /etc/ssl/certs DATEI` auf.
+# Nur /usr/bin/busybox; die Befehle in freien Pfaden legt usrside-busybox an (Hook).
+pkgname=busybox
+pkgver=1.36.1
+pkgrel=6
+pkgdesc='Utilities for rescue and embedded systems (UsrsideOS: dynamic, ln -r)'
+arch=(x86_64)
+url='https://www.busybox.net'
+license=(GPL-2.0-only)
+depends=(glibc libxcrypt)
+source=("https://www.busybox.net/downloads/busybox-$pkgver.tar.bz2"
+	0001-ln-relativ.patch)
+sha256sums=('b8cc24c9574d809e7279c3be349795c5d5ceb6fdf19ca709f80cde50e47de314'
+	'8e993c34851c95c4750c75d1824216ee23d22a139cb7239876468b9303274b78')
+
+prepare() {
+	cd busybox-$pkgver
+	patch -Np1 -i ../0001-ln-relativ.patch
+}
+
+build() {
+	cd busybox-$pkgver
+	make defconfig >/dev/null
+	# tc baut nicht mit neuen Kernel-Headern; wget mit eigenem TLS (HTTPS); ash ruft echte Programme auf
+	sed -i -e 's/^CONFIG_TC=y/# CONFIG_TC is not set/' \
+		-e 's/^# CONFIG_FEATURE_WGET_HTTPS is not set/CONFIG_FEATURE_WGET_HTTPS=y/' \
+		-e 's/^CONFIG_FEATURE_SH_STANDALONE=y/# CONFIG_FEATURE_SH_STANDALONE is not set/' .config
+	{ yes '' || true; } | make oldconfig >/dev/null
+	export KCONFIG_NOTIMESTAMP=1
+	make BB_EXTRA_VERSION="-$pkgrel" busybox
+}
+
+check() {
+	cd busybox-$pkgver
+	# dynamisch (fakeroot) und ln -r wie GNU
+	LC_ALL=C readelf -d busybox | grep -q 'NEEDED.*libc\.so' || return 1
+	local t
+	t=$(mktemp -d)
+	mkdir -p "$t/a/b" "$t/c"
+	: >"$t/a/b/f"
+	./busybox ln -fsr -t "$t/c" "$t/a/b/f" || return 1
+	[ "$(readlink "$t/c/f")" = ../a/b/f ] || return 1
+	./busybox ln -sr "$t/a/b/f" "$t/a/b/g" || return 1
+	[ "$(readlink "$t/a/b/g")" = f ] || return 1
+	./busybox ln -fsr "$t/c" "$t/a/b/h" || return 1
+	[ "$(readlink "$t/a/b/h")" = ../../c ] || return 1
+	rm -rf "$t"
+}
+
+package() {
+	cd busybox-$pkgver
+	install -Dm0755 busybox "$pkgdir/usr/bin/busybox"
+	install -Dm644 .config "$pkgdir/usr/share/doc/$pkgname/config"
+}

@@ -121,6 +121,16 @@ musl exportiert `__xstat`, `__lxstat`, `__fxstat`, `__fxstatat`, `__xmknod(at)` 
 glibc-Architekturen ohne xstat). stage2 installiert neu gebaute Pakete jetzt ohne `--needed` (gleiche Version
 nach NEU=1/Overlay-Änderung muss in den chroot).
 
+### BusyBox, fakeroot und `ln -r` (27.11., Befund e1e)
+- Arch-`busybox` ist statisch (musl-gcc): fakeroot (LD_PRELOAD) erreicht die Applets nicht, mit PROFIL=minimal
+  (glibc, BusyBox statt coreutils) gehörten die Dateien in AUR-Paketen dem Bau-Nutzer bzw. chown scheiterte.
+  Lösung: `bootstrap/pakete/busybox` – dieselbe Quelle 1.36.1, dynamisch gegen glibc, im Repo `usrside` (vor
+  core/extra), glibc-rootfs baut sie zuerst. Die musl-busybox (`overlay/busybox`) war schon dynamisch (fakeroot ok).
+- `ln -r`/`ln -t DIR` kann BusyBox auch in 1.38.0 nicht (update-ca-trust: `ln -fsr -t /etc/ssl/certs DATEI`):
+  eigener Patch `0001-ln-relativ.patch` (gleiche Datei in overlay/busybox und bootstrap/pakete/busybox), Ziel und
+  Link-Ordner werden wie bei coreutils kanonisch aufgelöst.
+- Module: `kmod` (zstd) statt BusyBox modprobe; Coldplug per modalias in rc.start, Hotplug über mdev.conf.
+
 ### iwd-Kernel-Krypto (M7)
 `bootstrap/kernel-krypto-test KERNEL` (Wirt mit gcc, openssl, bsdtar, qemu): AF_ALG md4/md5/sha1/sha256/384/512,
 hmac(…), cmac(aes), ecb/cbc/ctr(aes), ecb(des), cbc(des3_ede), ecb(arc4); keyctl DH_COMPUTE (1536-Bit-Gruppe);

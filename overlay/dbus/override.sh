@@ -1,3 +1,5 @@
+# pkgrel 2 (27.11.): alpm-Hook ohne systemd-hook (dbus-reload)
+pkgrel=2
 # Release-Tarball; ohne systemd/audit/libcap-ng, ohne Doku; ein Paket (keine systemd-Units);
 # Nutzer dbus (81) steht in filesystem (kein sysusers auf musl)
 usrside_tarball https://dbus.freedesktop.org/releases/dbus/dbus-$pkgver.tar.xz \
@@ -27,5 +29,15 @@ package_dbus() {
 	meson install -C build --destdir "$pkgdir"
 	rm -rf "$pkgdir/usr/share/doc" "$pkgdir/usr/lib/systemd"
 	install -Dt "$pkgdir/usr/share/libalpm/hooks" -m644 ./*.hook
+	# ohne systemd: Hook lädt die Bus-Konfiguration per D-Bus neu statt systemd-hook (Befund e1e M7: execv failed)
+	sed -i 's|^Exec = .*systemd-hook reload dbus.service$|Exec = /usr/share/libalpm/scripts/dbus-reload|' \
+		"$pkgdir"/usr/share/libalpm/hooks/*.hook
+	! grep -q systemd-hook "$pkgdir"/usr/share/libalpm/hooks/*.hook || return 1
+	install -Dm755 /dev/stdin "$pkgdir/usr/share/libalpm/scripts/dbus-reload" <<-'X'
+		#!/bin/sh
+		# UsrsideOS (musl): laufenden Systembus die Konfiguration neu lesen lassen; ohne Bus nichts tun
+		[ -S /run/dbus/system_bus_socket ] || exit 0
+		dbus-send --system --type=method_call --dest=org.freedesktop.DBus / org.freedesktop.DBus.ReloadConfig || :
+	X
 	install -Dt "$pkgdir/usr/share/licenses/$pkgname" -m644 dbus/COPYING dbus/LICENSES/AFL-2.1.txt
 }

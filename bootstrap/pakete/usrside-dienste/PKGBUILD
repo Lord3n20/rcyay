@@ -3,7 +3,7 @@
 # init=/etc/s6-linux-init/current/bin/init. poweroff/reboot/halt richten sich nach PID 1.
 pkgname=usrside-dienste
 pkgver=2026.11.26
-pkgrel=5
+pkgrel=6
 pkgdesc='UsrsideOS init scripts and services for BusyBox init, runit and s6'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'

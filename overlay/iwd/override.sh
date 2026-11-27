@@ -1,5 +1,8 @@
-# Release-Tarball hat configure: kein autoreconf; ohne systemd-Unit (Dienst: rcyay-dienste/overlay dienste),
-# ohne Handbuchseiten (python-docutils)
+# pkgrel 3 (27.11.): mit iwd.service (M7)
+pkgrel=3
+# Release-Tarball hat configure: kein autoreconf; ohne Handbuchseiten (python-docutils).
+# iwd.service wird trotzdem installiert (Pfade fest, kein systemd.pc): rcyay-dienste übersetzt sie für
+# runit/s6/BusyBox init (Befund t1 M7 Lauf 4: „iwd: no service to enable“); dazu die D-Bus-Aktivierung.
 usrside_ohne python-docutils
 prepare() {
 	cd ${pkgname}-${pkgver}
@@ -14,6 +17,16 @@ build() {
 	cd ${pkgname}-${pkgver}
 	./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --libexecdir=/usr/lib/iwd \
 		--enable-external-ell --enable-wired --enable-ofono --enable-hwsim --disable-tools \
-		--disable-systemd-service --disable-manual-pages
+		--with-systemd-unitdir=/usr/lib/systemd/system --with-systemd-networkdir=/usr/lib/systemd/network \
+		--with-systemd-modloaddir=/usr/lib/modules-load.d --with-dbus-busdir=/usr/share/dbus-1/system-services \
+		--disable-manual-pages
 	make
+}
+package() {
+	cd ${pkgname}-${pkgver}
+	make install DESTDIR="${pkgdir}"
+	install -Dm 644 README -t "${pkgdir}/usr/share/doc/${pkgname}"
+	# mit Unit legt make install /var/lib/iwd nicht an (StateDirectory=)
+	install -dm700 "${pkgdir}/var/lib/iwd" "${pkgdir}/var/lib/ead"
+	test -f "${pkgdir}/usr/lib/systemd/system/iwd.service"
 }

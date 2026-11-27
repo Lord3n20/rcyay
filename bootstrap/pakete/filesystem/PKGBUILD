@@ -1,7 +1,7 @@
 # UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
 pkgname=filesystem
 pkgver=2026.11.26
-pkgrel=6
+pkgrel=8
 pkgdesc='UsrsideOS base filesystem layout'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
@@ -29,7 +29,6 @@ package() {
 		bin:x:1:1::/:/usr/bin/nologin
 		daemon:x:2:2::/:/usr/bin/nologin
 		dbus:x:81:81:System Message Bus:/:/usr/bin/nologin
-		bau:x:1000:1000:makepkg:/home/bau:/usr/bin/bash
 		nobody:x:65534:65534:Nobody:/:/usr/bin/nologin
 	X
 	cat >etc/group <<-'X'
@@ -52,10 +51,13 @@ package() {
 		users:x:984:
 		kvm:x:78:
 		dbus:x:81:
-		bau:x:1000:
 		nobody:x:65534:
 	X
-	printf '%s\n' 'root:!*::::::' 'bin:!*::::::' 'daemon:!*::::::' 'dbus:!*::::::' 'bau:!*::::::' 'nobody:!*::::::' >etc/shadow
+	# 9 Felder je Zeile (BusyBox passwd: sonst „bad record“, Befund e1e M7); kein Bau-Nutzer bau: den legt
+	# stage2 nur im chroot an (sonst steht er im installierten System und der erste Nutzer bekommt 1001)
+	# root mit „*“ (kein Passwort, aber nicht gesperrt): OpenSSH ohne PAM lehnt bei „!“ auch Schlüssel ab (Befund t1)
+	printf 'root:*:::::::\n' >etc/shadow
+	printf '%s:!*:::::::\n' bin daemon dbus nobody >>etc/shadow
 	chmod 600 etc/shadow
 	printf '%s\n' '127.0.0.1 localhost' '::1 localhost' >etc/hosts
 	printf 'usrside\n' >etc/hostname
@@ -82,5 +84,4 @@ package() {
 	ln -s ../usr/lib/os-release etc/os-release
 	printf '#!/bin/sh\necho "This account is not available"\nexit 1\n' >usr/bin/nologin
 	chmod 755 usr/bin/nologin
-	install -dm755 -o 1000 -g 1000 home/bau
 }

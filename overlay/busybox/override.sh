@@ -1,5 +1,6 @@
-# pkgrel 5 (27.11.): lsblk/blkid/mount … gehören util-linux
-pkgrel=5
+# pkgrel 5 (27.11.): lsblk/blkid/mount … gehören util-linux; pkgrel 6: ln -r / ln -t (0001-ln-relativ.patch,
+# update-ca-trust; dieselbe Datei in bootstrap/pakete/busybox für glibc); modprobe … depmod gehören kmod)
+pkgrel=6
 # dynamisch gegen musl (nicht musl-gcc); Applet-Links für alles, was kein anderes Basispaket liefert
 # GNU sed gibt es nicht als Paket: das Applet erfüllt die Abhängigkeit (fakeroot)
 provides=(sed)
@@ -23,7 +24,7 @@ package() {
 	# diese Namen liefern andere Pakete (bash, xz, bzip2, patch, usrside-dienste …)
 	# lsblk … swapoff: volle Fassungen aus util-linux (Installer, usrkrnl); fehlt util-linux, legt usrside-busybox
 	# die Links an (Hook, freie Pfade)
-	local andere=" sh bash patch xz unxz xzcat lzma unlzma lzcat bzip2 bunzip2 bzcat poweroff reboot halt lsblk blkid findfs mount umount losetup fdisk mkswap swapon swapoff "
+	local andere=" sh bash patch xz unxz xzcat lzma unlzma lzcat bzip2 bunzip2 bzcat poweroff reboot halt lsblk blkid findfs mount umount losetup fdisk mkswap swapon swapoff modprobe insmod rmmod lsmod modinfo depmod "
 	while read -r l; do
 		l=${l##*/}
 		[[ $andere == *" $l "* || $l == busybox || $l == linuxrc ]] && continue

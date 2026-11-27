@@ -91,12 +91,21 @@ v_samurai() {
 	chmod 755 /usr/bin/arch-meson
 }
 
+# Bau-Nutzer bau (1000) nur im chroot: filesystem (ab pkgrel 7) liefert ihn nicht mehr mit, ein neues
+# filesystem-Paket kann /etc/passwd also ohne bau ersetzen → nach jeder Installation wieder eintragen
+bau_nutzer() {
+	grep -q '^bau:' /etc/passwd || echo 'bau:x:1000:1000:makepkg:/home/bau:/usr/bin/bash' >>/etc/passwd
+	grep -q '^bau:' /etc/group || echo 'bau:x:1000:' >>/etc/group
+	if [[ -f /etc/shadow ]] && ! grep -q '^bau:' /etc/shadow; then echo 'bau:!*:::::::' >>/etc/shadow; fi
+}
+
 konfiguration() {
 	# makepkg.conf/pacman.conf wie im Paket rcyay, MAKEFLAGS mit $JOBS, Repo im chroot unter $REPO
 	sed "s/\$(nproc)/$JOBS/" /usrside/bootstrap/pakete/rcyay/makepkg.conf >/etc/makepkg.conf
 	# CheckSpace geht im chroot schief (Einhängepunkte des Wirts in /proc/self/mounts)
 	sed -e "s|^Server = file:///srv/usrside-musl|Server = file://$REPO|" -e 's|^CheckSpace|#CheckSpace|' \
 		/usrside/bootstrap/pakete/rcyay/pacman.conf >/etc/pacman.conf
+	bau_nutzer
 	mkdir -p /home/bau/bau /var/tmp/bau
 	chown -R bau:bau /home/bau /var/tmp/bau "$PKGQ"
 	# pacman (CheckSpace) liest die Einhängepunkte aus /etc/mtab
@@ -168,6 +177,7 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
 	# --ask 4: Konflikte (z. B. rust ↔ rust-saat) mit Ja beantworten, also das alte Paket entfernen
 	"$(paketmanager)" -U --noconfirm --ask 4 --overwrite '*' -dd "${liste[@]}"
+	bau_nutzer
 	rm -rf /var/tmp/bau/"$name"
 }
 

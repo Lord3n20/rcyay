@@ -148,6 +148,14 @@ class H(BaseHTTPRequestHandler):
             d = os.path.join(ARGS.pkgs, base)
             if "/" in base or not os.path.isdir(d):
                 return self.send(404, "not found", "text/plain")
+            # PKGS/BASE.leer mit Zahl N: die nächsten N Snapshots kommen als HTTP 200 ohne Körper
+            # (sporadischer Fehler von aur.archlinux.org, Befund t1 27.11.)
+            leer = os.path.join(ARGS.pkgs, base + ".leer")
+            if os.path.isfile(leer):
+                n = int(open(leer).read().strip() or "0")
+                if n > 0:
+                    open(leer, "w").write(str(n - 1))
+                    return self.send(200, b"", "application/x-gzip")
             return self.send(200, tarball(d, base), "application/x-gzip")
         if path.startswith("/cgit/aur.git/plain/"):
             f = path[len("/cgit/aur.git/plain/"):]

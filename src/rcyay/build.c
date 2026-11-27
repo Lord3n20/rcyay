@@ -229,17 +229,50 @@ static aur_srcinfo_t *cb_srcinfo(void *ud, aur_pkg_t *pkg, char **err)
 	}
 	printf(_(" Downloading %s ...\n"), pkg->pkgbase);
 	fflush(stdout);
-	if(aur_http_download(R.ctx, url, j->tarball, &status) != 0) {
-		*err = strdup(R.ctx->error);
-		free(url);
-		goto fail;
+	/* Ein Snapshot ohne .SRCINFO/PKGBUILD (HTTP 200 mit leerem oder abgeschnittenem Körper, sporadisch
+	 * bei aur.archlinux.org) wird einmal neu geladen, danach Abbruch mit Größe und HTTP-Status */
+	for(int versuch = 1;; versuch++) {
+		struct stat st;
+		const char *fehlt = NULL;
+		e[0] = '\0';
+		status = 0;
+		unlink(j->tarball);   /* Größe im Fehlertext = dieser Download */
+		if(aur_http_download(R.ctx, url, j->tarball, &status) != 0) {
+			snprintf(e, sizeof(e), "%s", R.ctx->error);
+		} else {
+			rc_rm_rf(j->neu);
+			if(aur_extract(j->tarball, j->neu, 1, e, sizeof(e)) == 0) {
+				if(!(si = path2(j->neu, ".SRCINFO", NULL)) || access(si, R_OK) != 0) {
+					fehlt = ".SRCINFO";
+				}
+				free(si);
+				si = NULL;
+				if(!fehlt && (!(si = path2(j->neu, "PKGBUILD", NULL)) || access(si, R_OK) != 0)) {
+					fehlt = "PKGBUILD";
+				}
+				free(si);
+				si = NULL;
+				if(!fehlt) {
+					break;
+				}
+				snprintf(e, sizeof(e), _("snapshot of %s has no %s"), pkg->pkgbase, fehlt);
+			}
+		}
+		if(stat(j->tarball, &st) != 0) {
+			st.st_size = -1;
+		}
+		if(versuch >= 2) {
+			if(asprintf(err, _("%s (download %s: HTTP %ld, %lld bytes)"), e, url, status,
+						(long long)st.st_size) < 0) {
+				*err = NULL;
+			}
+			free(url);
+			goto fail;
+		}
+		fprintf(stderr, _("warning: %s (HTTP %ld, %lld bytes) – downloading again\n"), e, status,
+				(long long)st.st_size);
 	}
 	free(url);
-	rc_rm_rf(j->neu);
-	if(aur_extract(j->tarball, j->neu, 1, e, sizeof(e)) != 0) {
-		*err = strdup(e);
-		goto fail;
-	}
 	si = path2(j->neu, ".SRCINFO", NULL);
 	res = si ? aur_srcinfo_parse_file(si, err) : NULL;
 	free(si);
