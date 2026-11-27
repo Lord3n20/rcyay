@@ -28,7 +28,7 @@ build() {
 		-D glvnd=disabled -D llvm=disabled -D gbm=enabled -D egl=enabled -D gles1=disabled -D gles2=enabled \
 		-D glx=disabled -D opengl=true -D valgrind=disabled -D libunwind=disabled -D lmsensors=disabled \
 		-D gallium-va=disabled -D video-codecs= -D android-libbacktrace=disabled -D xmlconfig=enabled \
-		-D zstd=enabled -D expat=enabled -D teflon=false -D precomp-compiler=disabled -D spirv-tools=disabled \
+		-D zstd=enabled -D expat=enabled -D teflon=false -D precomp-compiler=auto -D spirv-tools=disabled \
 		-D gallium-rusticl=false -D microsoft-clc=disabled -D intel-rt=disabled -D tools= -D build-tests=false
 	meson compile -C build
 }
