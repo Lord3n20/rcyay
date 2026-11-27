@@ -1,3 +1,4 @@
+# Patch 0001: SOUND_INITIALIZED-Prüfung weg (libudev-zero hat keine udev-Regeln, sonst nur „Dummy Output“).
 # GitLab-Archiv des Tags; nur die Grundfunktionen (ALSA, Pulse-Ersatz, dbus, libudev-zero), alles andere
 # (bluez, jack, gstreamer, libcamera, sndfile/pw-cat, avahi, ffado, roc, onnx, webrtc, x11, v4l2) aus;
 # ein Paket statt der Arch-Teilung (provides deckt libpipewire/pipewire-audio/-pulse/-alsa/alsa-card-profiles)

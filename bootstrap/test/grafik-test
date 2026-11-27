@@ -67,9 +67,10 @@ chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\
 chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n5; grep -qi virgl /tmp/niri.log"
 # Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
 chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
+chk "SPA-ALSA-Plugin" "ls /usr/lib/spa-0.2/ /usr/lib/spa-0.2/alsa/ | tr '\\n' ' '; ls /usr/lib/libudev.so*"
 chk "pipewire + wireplumber starten" "export XDG_RUNTIME_DIR=/run/user/0; eval \$(dbus-daemon --session --fork --print-address=1 | sed 's/^/export DBUS_SESSION_BUS_ADDRESS=/'); env | grep DBUS_SESSION >/run/user/0/dbus.env;
 	setsid pipewire >/tmp/pw.log 2>&1 </dev/null & sleep 2; setsid wireplumber >/tmp/wp.log 2>&1 </dev/null & setsid pipewire-pulse >/tmp/pwp.log 2>&1 </dev/null & sleep 5; pgrep -x pipewire && pgrep -x wireplumber && pgrep -f pipewire-pulse"
-chk "wpctl status: Sink vorhanden" "export XDG_RUNTIME_DIR=/run/user/0; wpctl status | sed -n '/Audio/,/Video/p' | head -n 20; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -m2 -E 'node.name|alsa'"
+chk "wpctl: ALSA-Sink (nicht Dummy)" "export XDG_RUNTIME_DIR=/run/user/0; wpctl status | sed -n '/Audio/,/Video/p' | head -n 20; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -m2 -E 'node.name|alsa'; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -q alsa_output"
 chk "Pulse-Socket" "ls /run/user/0/pulse/native"
 s 'cat /tmp/pw.log /tmp/wp.log /tmp/pwp.log' >"$AUS/grafik-$ZEIT.ton.log" 2>&1
 s 'tail -n 40 /tmp/niri.log' >"$AUS/grafik-$ZEIT.niri.log" 2>&1
