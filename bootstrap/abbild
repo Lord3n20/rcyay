@@ -160,6 +160,12 @@ kernel() {
 		CONFIG_VT_CONSOLE=y
 		CONFIG_INPUT_EVDEV=y
 		CONFIG_VIRTIO_INPUT=y
+		# Ton (M5 2c: pipewire) – virtio-snd in der VM, HDA für echte Geräte/qemu intel-hda
+		CONFIG_SOUND=y
+		CONFIG_SND=y
+		CONFIG_SND_VIRTIO=y
+		CONFIG_SND_HDA_INTEL=y
+		CONFIG_SND_HDA_GENERIC=y
 		CONFIG_MODULE_COMPRESS_NONE=y
 		# CONFIG_MODULE_COMPRESS_ZSTD is not set
 		# CONFIG_MODULE_COMPRESS_XZ is not set
@@ -183,7 +189,7 @@ kernel() {
 	local s
 	for s in BTRFS_FS VIRTIO_BLK VIRTIO_NET VIRTIO_PCI 9P_FS NET_9P_VIRTIO SERIAL_8250_CONSOLE DEVTMPFS_MOUNT \
 		SQUASHFS OVERLAY_FS BLK_DEV_LOOP ISO9660_FS EXFAT_FS BLK_DEV_DM USB_STORAGE BLK_DEV_NVME RD_ZSTD CRYPTO_USER_API_SKCIPHER CRYPTO_USER_API_HASH \
-		KEY_DH_OPERATIONS CRYPTO_ARC4 CRYPTO_CMAC PKCS8_PRIVATE_KEY_PARSER DRM_VIRTIO_GPU INPUT_EVDEV; do
+		KEY_DH_OPERATIONS CRYPTO_ARC4 CRYPTO_CMAC PKCS8_PRIVATE_KEY_PARSER DRM_VIRTIO_GPU INPUT_EVDEV SND_VIRTIO; do
 		grep -q "^CONFIG_$s=y" "$tree/.config" || abbruch "CONFIG_$s ist nicht =y"
 	done
 	make -C "$tree" LLVM="$llvm/" LOCALVERSION= -j"$JOBS" bzImage modules
@@ -394,7 +400,7 @@ beigaben() { # .inits und .commit
 
 # der Kernel hängt nicht von der Variante ab: eine Marke für musl und glibc
 # (-2: Live-Kernel ohne CMDLINE, USB/NVMe/exFAT fest eingebaut)
-FERTIG=$KBAU/fertig schritt abbild-kernel-4 kernel
+FERTIG=$KBAU/fertig schritt abbild-kernel-5 kernel
 ((NUR_KERNEL)) && exit 0
 rootfs_bauen
 meldung "Rootfs fertig: $RFS"

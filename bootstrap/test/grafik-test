@@ -1,5 +1,6 @@
 #!/bin/bash
 # grafik-test (rcyay-e2, 27.11.2026): M5-Abbild mit virtio-gpu (virgl über egl-headless) booten, seatd + niri
+# (+ Ton: virtio-snd, pipewire/wireplumber/pipewire-pulse)
 # als root starten, foot als erstes Fenster, Bildschirmfoto. Läuft auf dem Wirt (ist eine VM!).
 #   bootstrap/test/grafik-test [ABBILD_DIR]   (Standard ~/vm/rcyay/vms/bau-e2/aus, Variante musl, Init runit)
 # Umgebung: GT_PORT (2236; 2226 hat pruef), GT_INIT (runit), GT_CPUS (16-19, taskset), GT_AUS (Logs/Foto, Standard ~/vm/logs/rcyay-grafik)
@@ -42,6 +43,7 @@ nice -n 19 taskset -c "$CPUS" qemu-system-x86_64 -name grafik-test -enable-kvm -
 	-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:"$PORT"-:22 \
 	-device virtio-vga-gl -display egl-headless${RN:+,rendernode=$RN} \
 	-device virtio-keyboard-pci -device virtio-tablet-pci \
+	-audiodev none,id=ton -device virtio-sound-pci,audiodev=ton \
 	-serial file:"$W/serial.log" -pidfile "$W/qemu.pid" -daemonize || { bad "qemu startet nicht"; exit 1; }
 for i in $(seq 120); do
 	s true 2>/dev/null && { ok "SSH nach $((i * 2)) s"; break; }
@@ -63,6 +65,13 @@ chk "niri startet" "export XDG_RUNTIME_DIR=/run/user/0 RUST_LOG=info; setsid nir
 chk "foot läuft" "pgrep -x foot"
 chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\$(ls /run/user/0/niri*.sock | head -n1); niri msg windows"
 chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n5; grep -qi virgl /tmp/niri.log"
+# Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
+chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
+chk "pipewire + wireplumber starten" "export XDG_RUNTIME_DIR=/run/user/0; eval \$(dbus-daemon --session --fork --print-address=1 | sed 's/^/export DBUS_SESSION_BUS_ADDRESS=/'); env | grep DBUS_SESSION >/run/user/0/dbus.env;
+	setsid pipewire >/tmp/pw.log 2>&1 </dev/null & sleep 2; setsid wireplumber >/tmp/wp.log 2>&1 </dev/null & setsid pipewire-pulse >/tmp/pwp.log 2>&1 </dev/null & sleep 5; pgrep -x pipewire && pgrep -x wireplumber && pgrep -f pipewire-pulse"
+chk "wpctl status: Sink vorhanden" "export XDG_RUNTIME_DIR=/run/user/0; wpctl status | sed -n '/Audio/,/Video/p' | head -n 20; wpctl inspect @DEFAULT_AUDIO_SINK@ | grep -m2 -E 'node.name|alsa'"
+chk "Pulse-Socket" "ls /run/user/0/pulse/native"
+s 'cat /tmp/pw.log /tmp/wp.log /tmp/pwp.log' >"$AUS/grafik-$ZEIT.ton.log" 2>&1
 s 'tail -n 40 /tmp/niri.log' >"$AUS/grafik-$ZEIT.niri.log" 2>&1
 s 'dmesg' >"$AUS/grafik-$ZEIT.dmesg" 2>&1
 # Bildschirmfoto über niri selbst (qemu-screendump hat bei GL-Scanout mit egl-headless „no surface“)
