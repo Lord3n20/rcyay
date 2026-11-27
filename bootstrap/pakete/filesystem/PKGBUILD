@@ -1,7 +1,7 @@
 # UsrsideOS-Grundgerüst (ersetzt Arch "filesystem"): usr-merge, Nutzer, /etc-Grunddateien
 pkgname=filesystem
 pkgver=2026.11.26
-pkgrel=7
+pkgrel=8
 pkgdesc='UsrsideOS base filesystem layout'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
@@ -55,7 +55,9 @@ package() {
 	X
 	# 9 Felder je Zeile (BusyBox passwd: sonst „bad record“, Befund e1e M7); kein Bau-Nutzer bau: den legt
 	# stage2 nur im chroot an (sonst steht er im installierten System und der erste Nutzer bekommt 1001)
-	printf '%s:!*:::::::\n' root bin daemon dbus nobody >etc/shadow
+	# root mit „*“ (kein Passwort, aber nicht gesperrt): OpenSSH ohne PAM lehnt bei „!“ auch Schlüssel ab (Befund t1)
+	printf 'root:*:::::::\n' >etc/shadow
+	printf '%s:!*:::::::\n' bin daemon dbus nobody >>etc/shadow
 	chmod 600 etc/shadow
 	printf '%s\n' '127.0.0.1 localhost' '::1 localhost' >etc/hosts
 	printf 'usrside\n' >etc/hostname
