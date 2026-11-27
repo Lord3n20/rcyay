@@ -108,3 +108,4 @@ usrside-busybox      rcyay
 usrside-init         rcyay
 usrside-base         rcyay
 linux-firmware       arch:20261019-1           fc287a642cf93f59818b9dc03a93f816bd62365b9da962b3d826cd531ebfa66b
+kmod                 arch:34.4-1               acf01a625ff7a77d96f0f33425184b4de915c1a1e37dd7a1745e83fd6831298c

@@ -2,7 +2,7 @@
 # glibc-rootfs: Rootfs der glibc-Variante von UsrsideOS aus Arch-Binärpaketen + Repo usrside (PLAN.md 1.2, M4).
 #   bootstrap/glibc-rootfs [ZIEL]          (Standard /var/tmp/usrside/glibc/rootfs; NUR in einer Bau-VM als root)
 # Ablauf:
-#   1. baut das Repo usrside: pkg/{rcyay,usrside-init,usrside-busybox,usrside-base,usrside-udev} aus diesem Baum,
+#   1. baut das Repo usrside: busybox (dynamisch gegen glibc, ln -r; bootstrap/pakete/busybox), pkg/{rcyay,usrside-init,usrside-busybox,usrside-base,usrside-udev} aus diesem Baum,
 #      dazu runit, skalibs, execline, s6, s6-linux-init, usrside-dienste aus den PKGBUILDs von rcyay-e2
 #      (Branch bootstrap, bootstrap/pakete; beim Bau nur depends musl → glibc, die Dateien bleiben unverändert)
 #   2. pacman -r ZIEL: core/extra/multilib (Arch) + usrside → usrside-base, alle 4 Inits, openssh, dhcpcd, seatd
@@ -53,7 +53,7 @@ mkdir -p "$ARBEIT" "$W"
 
 # ---------- 1. Repo usrside ----------
 # Pakete in Bau-Reihenfolge: Ordner|Quelle (main = dieser Baum, e2 = Branch bootstrap)
-LISTE="rcyay|main usrside-init|main usrside-busybox|main usrside-base|main usrside-udev|main
+LISTE="busybox|e2 rcyay|main usrside-init|main usrside-busybox|main usrside-base|main usrside-udev|main
 skalibs|e2 execline|e2 s6|e2 s6-linux-init|e2 runit|e2 usrside-dienste|e2"
 # Bauabhängigkeiten aus dem eigenen Repo, die vorher auf dem Bauwirt installiert sein müssen
 declare -A WIRT=([execline]=skalibs [s6]="skalibs execline" [s6-linux-init]="skalibs execline s6")
@@ -94,11 +94,14 @@ meldung "Repo usrside in $REPO"
 [[ ${NEU_BAUEN:-0} == 1 ]] && rm -rf "$REPO"
 mkdir -p "$REPO"
 chmod 777 "$REPO"
-pacman -Q busybox >/dev/null 2>&1 || pacman -S --noconfirm --needed busybox >/dev/null
 pacman -Fy >/dev/null 2>&1 || :   # usrside-busybox fragt pacman -F nach freien Pfaden
 # alte gleichnamige Bauten im Cache des Wirts würden pacman -U/-S verwirren
 rm -f /var/cache/pacman/pkg/rcyay-[0-9]* /var/cache/pacman/pkg/usrside-* 2>/dev/null || :
-for e in $LISTE; do bauen "${e%|*}" "${e#*|}"; done
+for e in $LISTE; do
+	bauen "${e%|*}" "${e#*|}"
+	# eigene busybox (dynamisch, ln -r) auch auf dem Wirt: usrside-busybox liest dort die Applet-Liste
+	if [[ $e == busybox\|* ]]; then pacman -U --noconfirm --needed "$REPO"/busybox-[0-9]*.pkg.tar.zst >/dev/null; fi
+done
 rm -f "$REPO"/usrside.db* "$REPO"/usrside.files*
 repo-add -q "$REPO/usrside.db.tar.gz" "$REPO"/*.pkg.tar.zst
 

@@ -1,0 +1,140 @@
+--- a/coreutils/ln.c	2026-11-27 12:27:44.102940271 +0100
++++ b/coreutils/ln.c	2026-11-27 12:28:57.361613762 +0100
+@@ -21,7 +21,7 @@
+ /* http://www.opengroup.org/onlinepubs/007904975/utilities/ln.html */
+ 
+ //usage:#define ln_trivial_usage
+-//usage:       "[-sfnbtv] [-S SUF] TARGET... LINK|DIR"
++//usage:       "[-sfnbtvr] [-S SUF] [-t DIR] TARGET... LINK|DIR"
+ //usage:#define ln_full_usage "\n\n"
+ //usage:       "Create a link LINK or DIR/TARGET to the specified TARGET(s)\n"
+ //usage:     "\n	-s	Make symlinks instead of hardlinks"
+@@ -30,6 +30,8 @@
+ //usage:     "\n	-b	Make a backup of the target (if exists) before link operation"
+ //usage:     "\n	-S SUF	Use suffix instead of ~ when making backup files"
+ //usage:     "\n	-T	Treat LINK as a file, not DIR"
++//usage:     "\n	-t DIR	Create all links in DIR (every argument is a TARGET)"
++//usage:     "\n	-r	With -s: make the link relative to its location"
+ //usage:     "\n	-v	Verbose"
+ //usage:
+ //usage:#define ln_example_usage
+@@ -48,6 +50,65 @@
+ #define LN_SUFFIX           (1 << 4)
+ #define LN_VERBOSE          (1 << 5)
+ #define LN_LINKFILE         (1 << 6)
++#define LN_RELATIVE         (1 << 7)
++#define LN_TARGETDIR        (1 << 8)
++
++/* UsrsideOS: GNU "ln -r" (update-ca-trust: ln -fsr -t DIR FILE).
++ * Like coreutils, TARGET and the directory of LINK are canonicalized
++ * (symlinks resolved, the last component of TARGET may be missing). */
++static char *relative_target(const char *target, const char *link)
++{
++	char *t, *d, *dir, *res, *p;
++	size_t i, sep;
++	unsigned up;
++
++	p = xstrdup(target);
++	t = xmalloc_realpath_coreutils(p);
++	free(p);
++	dir = xstrdup(link);
++	p = strrchr(dir, '/');
++	if (!p)
++		strcpy(dir, ".");
++	else if (p == dir)
++		p[1] = '\0';
++	else
++		*p = '\0';
++	d = xmalloc_realpath(dir);
++	free(dir);
++	if (!t || !d) {
++		bb_perror_msg("%s", t ? link : target);
++		free(t);
++		free(d);
++		return NULL;
++	}
++	/* longest common prefix ending at a component boundary */
++	sep = 0;
++	for (i = 0; t[i] && t[i] == d[i]; i++)
++		if (t[i] == '/')
++			sep = i;
++	if ((d[i] == '\0' && (t[i] == '/' || t[i] == '\0'))
++	 || (t[i] == '\0' && d[i] == '/'))
++		sep = i;
++	up = 0;
++	for (p = d + sep; *p; p++)
++		if (*p == '/' && p[1] && p[1] != '/')
++			up++;
++	p = t + sep;
++	while (*p == '/')
++		p++;
++	res = xzalloc(up * 3 + strlen(p) + 2);
++	while (up--)
++		strcat(res, "../");
++	strcat(res, p);
++	i = strlen(res);
++	if (i == 0)
++		strcpy(res, ".");
++	else if (res[i - 1] == '/')
++		res[i - 1] = '\0';
++	free(t);
++	free(d);
++	return res;
++}
+ 
+ int ln_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int ln_main(int argc, char **argv)
+@@ -58,10 +119,12 @@
+ 	char *src_name;
+ 	char *src;
+ 	char *suffix = (char*)"~";
++	char *tdir = NULL;
++	char *rel;
+ 	struct stat statbuf;
+ 	int (*link_func)(const char *, const char *);
+ 
+-	opts = getopt32(argv, "^" "sfnbS:vT" "\0" "-1", &suffix);
++	opts = getopt32(argv, "^" "sfnbS:vTrt:" "\0" "-1:T--t:t--T", &suffix, &tdir);
+ /*
+ 	-s, --symbolic		make symbolic links instead of hard links
+ 	-f, --force		remove existing destination files
+@@ -82,6 +145,17 @@
+ 	argv += optind;
+ 	argc -= optind;
+ 
++	if (opts & LN_TARGETDIR) {
++		/* "ln -t DIR A B" == "ln A B DIR" (DIR must be a directory) */
++		char **v = xzalloc((argc + 2) * sizeof(v[0]));
++		memcpy(v, argv, argc * sizeof(v[0]));
++		v[argc] = last = tdir;
++		argv = v;
++		argc++;
++		if (!is_directory(tdir, 1))
++			bb_error_msg_and_die("'%s' is not a directory", tdir);
++	}
++
+ 	if ((opts & LN_LINKFILE) && argc > 2) {
+ 		bb_simple_error_msg_and_die("-T accepts 2 args max");
+ 	}
+@@ -153,10 +227,20 @@
+ 			printf("'%s' -> '%s'\n", src, *argv);
+ 		}
+ 
+-		if (link_func(*argv, src) != 0) {
++		rel = NULL;
++		if ((opts & (LN_SYMLINK|LN_RELATIVE)) == (LN_SYMLINK|LN_RELATIVE)) {
++			rel = relative_target(*argv, src);
++			if (!rel) {
++				status = EXIT_FAILURE;
++				free(src_name);
++				continue;
++			}
++		}
++		if (link_func(rel ? rel : *argv, src) != 0) {
+ 			bb_simple_perror_msg(src);
+ 			status = EXIT_FAILURE;
+ 		}
++		free(rel);
+ 
+ 		free(src_name);
+ 	} while ((++argv)[1]);
