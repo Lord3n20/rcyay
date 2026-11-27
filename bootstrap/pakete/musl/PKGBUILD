@@ -1,14 +1,14 @@
 # musl als System-libc (Arch "musl" ist nur ein Kreuz-Wrapper unter /usr/lib/musl)
 pkgname=musl
 pkgver=1.2.6
-pkgrel=1
+pkgrel=2
 pkgdesc='Lightweight implementation of the C standard library (system libc)'
 arch=(x86_64)
 url='https://musl.libc.org/'
 license=(MIT)
 depends=(filesystem linux-api-headers)
 provides=(libc libc.so ldd)
-options=(!lto)
+options=(!lto staticlibs)  # libc.a: rust (musl-root, self-contained crt) und statische Programme
 source=("https://musl.libc.org/releases/musl-$pkgver.tar.gz")
 sha256sums=('d585fd3b613c66151fc3249e8ed44f77020cb5e6c1e635a616d3f9f82460512a')
 
