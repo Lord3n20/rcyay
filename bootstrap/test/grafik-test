@@ -89,6 +89,11 @@ chk "GL-Renderer ($GLN)" "grep -iE 'renderer|virgl|llvmpipe|egl' /tmp/niri.log |
 		echo DISPLAY=:\$x; ps -o pid,comm,args | grep -i [x]wayland; niri msg windows | grep -E 'Title|App ID';
 		niri msg windows | grep -q x11-fenster"
 fi
+# Stufe 2h: Werkzeuge, die der musl-Installer im Ziel braucht
+chk "2h: /usr/sbin ist Symlink, /etc/rcyay.conf von usrside-init" "[ -L /usr/sbin ] && pacman -Qqo /etc/rcyay.conf | grep -x usrside-init"
+chk "2h: util-linux (lsblk/blkid/findmnt/agetty)" "lsblk -dno NAME,TYPE /dev/vda && blkid -s UUID -o value /dev/vda2 && findmnt -no FSTYPE / && agetty --version | head -n1 && readlink -f /usr/bin/mount"
+chk "2h: shadow (useradd/groupadd/usermod)" "groupadd -f gruppe2h && useradd -m -G gruppe2h -s /bin/bash probe2h && echo probe2h:Probe2h | chpasswd -c sha512 && id probe2h && grep -q '^probe2h:\\\$6\\\$' /etc/shadow && usermod -aG video probe2h && userdel -r probe2h && groupdel gruppe2h"
+chk "2h: kbd, dosfstools, btrfs-progs, efibootmgr, iwd, resolvconf, sudo, tzdata" "loadkeys -C /dev/tty1 de-latin1 && mkfs.fat --help 2>&1 | head -n1; btrfs --version && efibootmgr --version 2>&1 | head -n1; ls /usr/lib/iwd/iwd && resolvconf -v 2>&1 | head -n1; sudo -V | head -n1; ls /usr/share/zoneinfo/Europe/Berlin"
 # Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
 chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
 chk "SPA-ALSA-Plugin" "ls /usr/lib/spa-0.2/ /usr/lib/spa-0.2/alsa/ | tr '\\n' ' '; ls /usr/lib/libudev.so*"
