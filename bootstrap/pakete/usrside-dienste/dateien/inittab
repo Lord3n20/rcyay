@@ -2,6 +2,7 @@
 ::sysinit:/usr/lib/usrside/rc.start
 ::respawn:/etc/sv/dhcpcd/run
 ::respawn:/etc/sv/sshd/run
+::respawn:/etc/sv/seatd/run
 ttyS0::respawn:/etc/sv/getty-ttyS0/run
 tty1::respawn:/usr/bin/getty 38400 tty1
 ::ctrlaltdel:/usr/bin/busybox reboot

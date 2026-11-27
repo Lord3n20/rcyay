@@ -140,13 +140,17 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	chown -R bau:bau "$ziel"
 	# C.UTF-8: bsdtar scheitert sonst an UTF-8-Dateinamen (gcc-Testsuite)
 	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH LC_ALL=C.UTF-8 LANG=C.UTF-8"
+	# alten Bauordner eines fehlgeschlagenen Laufs weg: makepkg packt nur darüber aus, erzeugte Dateien
+	# (z. B. libpngs pnglibconf.h) blieben sonst stehen
+	rm -rf /var/tmp/bau/"$name"
 	su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg -f --nodeps --nocheck --skippgpcheck --ignorearch --noconfirm --noprogressbar"
 	dateien=$(su -s /usr/bin/bash bau -c "cd '$ziel' && env $env makepkg --packagelist --ignorearch")
 	local f liste=()
 	while IFS= read -r f; do [[ -e $f ]] && liste+=("$f"); done <<<"$dateien"
 	((${#liste[@]})) || abbruch "$name: makepkg hat keine Pakete erzeugt"
 	[[ $flags == *-ohne-install* ]] && return 0
-	"$(paketmanager)" -U --noconfirm --needed --overwrite '*' -dd "${liste[@]}"
+	# ohne --needed: ein neu gebautes Paket gleicher Version (NEU=1, Overlay-Änderung) muss in den chroot
+	"$(paketmanager)" -U --noconfirm --overwrite '*' -dd "${liste[@]}"
 	rm -rf /var/tmp/bau/"$name"
 }
 

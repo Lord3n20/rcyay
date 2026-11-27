@@ -271,8 +271,13 @@ b_fakeroot() {
 	src=$(auspacken fakeroot)
 	flicken "$src" fakeroot
 	cd "$src"
-	# musl hat capset(), aber kein <sys/capability.h> → nicht einwickeln
-	./configure "${conf[@]}" --libdir=/usr/lib/libfakeroot --with-ipc=sysv ac_cv_func_capset=no
+	# musl hat capset(), aber kein <sys/capability.h> → nicht einwickeln.
+	# musl exportiert __xstat & Co. nur als glibc-Kompatibilität; stat()/lstat()/fstat()/fstatat()
+	# rufen sie nicht auf. Findet configure sie, wickelt libfakeroot nur sie ein und Pakete
+	# gehören dem Bau-Nutzer → abschalten, dann werden stat() usw. direkt eingewickelt.
+	./configure "${conf[@]}" --libdir=/usr/lib/libfakeroot --with-ipc=sysv ac_cv_func_capset=no \
+		ac_cv_func___xstat=no ac_cv_func___lxstat=no ac_cv_func___fxstat=no ac_cv_func___fxstatat=no \
+		ac_cv_func___xmknod=no ac_cv_func___xmknodat=no
 	make -j"$JOBS"
 	make DESTDIR="$WURZEL" install
 	aufraeumen "$src"

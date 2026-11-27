@@ -1,0 +1,4 @@
+#!/bin/sh
+# seatd (Paket seatd): Sitzverwaltung für Wayland-Compositoren; Nutzer in die Gruppe seat
+[ -x /usr/bin/seatd ] || exec sleep 2147483647
+exec /usr/bin/seatd -g seat 2>&1

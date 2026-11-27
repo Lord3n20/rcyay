@@ -3,12 +3,13 @@
 # init=/etc/s6-linux-init/current/bin/init. poweroff/reboot/halt richten sich nach PID 1.
 pkgname=usrside-dienste
 pkgver=2026.11.26
-pkgrel=4
+pkgrel=5
 pkgdesc='UsrsideOS init scripts and services for BusyBox init, runit and s6'
 arch=(any)
 url='https://github.com/Lord3n20/usrsideos'
 license=(GPL-2.0-only)
 depends=(busybox runit s6-linux-init openssh dhcpcd)
+optdepends=('seatd: Dienst seatd (ohne das Paket schläft er)')
 backup=(etc/inittab etc/mdev.conf)
 install=usrside-dienste.install
 
@@ -24,14 +25,14 @@ package() {
 	install -Dm644 inittab "$pkgdir/etc/inittab"
 	install -Dm644 mdev.conf "$pkgdir/etc/mdev.conf"
 	local s
-	for s in sshd dhcpcd getty-ttyS0; do
+	for s in sshd dhcpcd getty-ttyS0 seatd; do
 		install -Dm755 "sv-$s" "$pkgdir/etc/sv/$s/run"
 	done
 	install -Dm755 runit-1 "$pkgdir/etc/runit/1"
 	install -Dm755 runit-2 "$pkgdir/etc/runit/2"
 	install -Dm755 runit-3 "$pkgdir/etc/runit/3"
 	install -dm755 "$pkgdir/etc/runit/runsvdir/default"
-	for s in sshd dhcpcd getty-ttyS0; do
+	for s in sshd dhcpcd getty-ttyS0 seatd; do
 		ln -s "/etc/sv/$s" "$pkgdir/etc/runit/runsvdir/default/$s"
 	done
 	ln -s default "$pkgdir/etc/runit/runsvdir/current"
