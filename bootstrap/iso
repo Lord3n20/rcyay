@@ -207,11 +207,16 @@ aur_bauen() {
 	rm -rf "$d" "$q"
 	mkdir -p "$d" "$q"
 	chown "${NUTZER:-bau}" "$q"
-	liste=$(env -i PATH="$PATH" OHNE="$OFFLINE_OHNE ${AUR_OHNE-browser}" bash -c '
-		log() { :; }; warn() { :; }; die() { exit 1; }
-		. "$1"
-		for k in "${!AUR[@]}"; do [[ " $OHNE " == *" $k "* ]] || echo "${AUR[$k]}"; done' _ \
-		"$RFS/usr/share/usrside-installer/os/usrside.sh" | tr ' ' '\n' | sort -u)
+	if [[ -n $INST_LISTE ]]; then
+		# Browser (AUR_WEG) bleibt offline weg
+		liste=$(awk '$1 == "aur" {print $2}' <<<"$INST_LISTE" | grep -vxF -e "${AUR_WEG-ungoogled-chromium-bin}" | sort -u || true)
+	else
+		liste=$(env -i PATH="$PATH" OHNE="$OFFLINE_OHNE ${AUR_OHNE-browser}" bash -c '
+			log() { :; }; warn() { :; }; die() { exit 1; }
+			. "$1"
+			for k in "${!AUR[@]}"; do [[ " $OHNE " == *" $k "* ]] || echo "${AUR[$k]}"; done' _ \
+			"$RFS/usr/share/usrside-installer/os/usrside.sh" | tr ' ' '\n' | sort -u)
+	fi
 	: >"$d/aur-commits.txt"
 	for n in $liste; do
 		meldung "AUR: $n"
