@@ -20,12 +20,6 @@ options=(staticlibs !lto !debug)
 source=("https://github.com/llvm/llvm-project/releases/download/llvmorg-$pkgver/llvm-project-$pkgver.src.tar.xz")
 sha256sums=('fb50b1eac93ddeb3aa8dab4cfe324dff74f4a9c2bdee6160c9e36188f8d06a6e')
 
-prepare() {
-	cd "llvm-project-$pkgver.src"
-	# Arch: eigenes Findzstd passt nicht zu zstd (zstdConfig.cmake von zstd selbst)
-	rm -f llvm/cmake/modules/Findzstd.cmake
-}
-
 build() {
 	cd "llvm-project-$pkgver.src"
 	# ohne Debug-Infos: halbiert Platz und Speicher beim Linken
