@@ -1,0 +1,27 @@
+# rust-saat: fertige Rust-Toolchain (rustc, cargo, std) für x86_64-unknown-linux-musl von static.rust-lang.org.
+# Saat wie Gentoos rust-bin: rustc braucht zum Bauen einen rustc (Version N-1); ohne Saat gäbe es nur den
+# Weg über mrustc (C++, sehr langsam, hängt Jahre zurück). Prüfsumme fest eingetragen (README: „Was nicht aus Quellen“).
+# Damit werden fish und niri gebaut; Arch-rust aus Quellen kann später mit dieser Saat folgen.
+pkgname=rust-saat
+pkgver=1.100.0
+pkgrel=1
+pkgdesc='Rust-Toolchain (Saat, fertige musl-Binärdateien von rust-lang.org)'
+arch=(x86_64)
+url='https://www.rust-lang.org/'
+license=('Apache-2.0 OR MIT')
+depends=(musl gcc curl zlib)
+provides=("rust=1:$pkgver" "cargo=1:$pkgver" "rustc=1:$pkgver")
+conflicts=(rust cargo)
+options=(!strip !emptydirs)
+_n=rust-$pkgver-x86_64-unknown-linux-musl
+source=("https://static.rust-lang.org/dist/$_n.tar.xz")
+sha256sums=('fda6aa497a5c40df71274f92463b8cf0a1d36040dc9d22ef62236fc40e62b648')
+
+package() {
+	cd "$_n"
+	./install.sh --prefix=/usr --destdir="$pkgdir" --disable-ldconfig \
+		--components=rustc,cargo,rust-std-x86_64-unknown-linux-musl
+	rm -f "$pkgdir"/usr/lib/rustlib/{install.log,uninstall.sh,manifest-*}
+	rm -rf "$pkgdir/usr/share/doc"
+	install -Dm644 LICENSE-APACHE LICENSE-MIT -t "$pkgdir/usr/share/licenses/$pkgname"
+}

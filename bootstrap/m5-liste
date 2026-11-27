@@ -23,3 +23,8 @@ m4                   arch:1.4.21-2             16b4384c87031c8294d9e61c918cd05d3
 bison                arch:3.8.2-8              0564db9d132f98919a536d0073ba68658138aa6cf970522760df00e08a449d5b
 libxkbcommon         arch:1.13.2-1             308bcc311dd5b014458ac68dc09dd52896b85e9f9fc73709320bc44612b9666c
 foot                 arch:1.28.0-2             1d5560a3ebaa829ea7b12195eb2bd6b6416a493d6ac8a77020e5315764ba6710
+# Stufe 2a: fish (Rust-Saat statt Arch-rust, cmake mit gebündelten Kleinbibliotheken)
+pcre2                arch:10.49-1              082c9e5fa697b414cea05bfaed01d9cb80e805a7548df440b7e9da2312b91888
+cmake                arch:4.5.1-1              0426a6d82fe0f43cf73781395d681e7ea2e55b6abf727e4672923e18b3fb36f2
+rust-saat            eigen
+fish                 arch:4.9.3-1              0777e2c64ec70155a1d209a457b83bd38aef9300aa2c45a0d045042877c16fdf

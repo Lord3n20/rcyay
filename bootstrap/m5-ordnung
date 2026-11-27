@@ -1,7 +1,7 @@
 #!/usr/bin/python3 -I
 """Pflegewerkzeug (Arch-Rechner): Bau-Reihenfolge für musl-Quellbauten aus den Arch-Sync-Datenbanken.
 
-  bootstrap/m5-ordnung [--haben DATEI] [--ohne NAME,…] [--ersatz ALT=NEU,…] [--warum NAME] ZIEL …
+  bootstrap/m5-ordnung [--haben DATEI] [--ohne NAME|VORBAU|DOKU|SYSTEMD,…] [--ersatz ALT=NEU,…] [--warum NAME] ZIEL …
 
 usrside_ohne-Zeilen aus overlay/BASIS/override.sh werden für diese Basis abgezogen (wie beim Bau).
 --warum NAME gibt die Kette ZIEL → … → NAME aus (zum Beschneiden).
@@ -18,6 +18,17 @@ import subprocess
 import sys
 import tarfile
 
+# Gruppen für --ohne: VORBAU = im stage2-chroot ohne Paket vorhanden (stage2-innen v_*) bzw. durch musl/
+# busybox/Tarball ersetzt; DOKU = nur für Handbuch/Doku; SYSTEMD = auf musl nicht da (Overlay schaltet ab).
+GRUPPEN = {
+    "VORBAU": {"m4", "sed", "grep", "diffutils", "findutils", "gawk", "coreutils", "file", "perl", "python",
+               "meson", "ninja", "samurai", "glibc", "git", "lib32-glibc", "which", "gzip", "tar"},
+    "DOKU": {"python-sphinx", "python-sphinx_rtd_theme", "python-sphinx-furo", "python-docutils", "doxygen",
+             "graphviz", "asciidoc", "asciidoctor", "xmlto", "gtk-doc", "gi-docgen", "hotdoc", "help2man",
+             "texinfo", "scdoc", "docbook-xsl", "docbook-xml", "pandoc-cli", "ruby-ronn-ng", "yelp-tools",
+             "itstool", "xmltoman", "man-db", "groff", "go-md2man", "mandoc"},
+    "SYSTEMD": {"systemd", "systemd-libs", "libsystemd.so", "libudev.so", "libelogind"},
+}
 args = sys.argv[1:]
 haben, ohne, ersatz, warum = set(), set(), {}, None
 OVERLAY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "overlay")
@@ -31,7 +42,8 @@ while args:
                 if z:
                     haben.add(z[0])
     elif a == "--ohne":
-        ohne |= set(args.pop(0).split(","))
+        for x in args.pop(0).split(","):
+            ohne |= GRUPPEN.get(x, {x})
     elif a == "--warum":
         warum = args.pop(0)
     elif a == "--ersatz":
@@ -99,7 +111,8 @@ def aufloesen(d):
     if not a:
         print(f"# nicht auflösbar: {d}", file=sys.stderr)
         return None
-    return sorted(a)[0]
+    r = sorted(a)[0]
+    return None if r in ohne else r
 
 
 # Basen, die schon gebaut sind, liefern alle ihre Teilpakete
