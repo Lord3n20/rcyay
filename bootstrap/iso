@@ -234,7 +234,8 @@ if [[ -s $MUSL_REPO/usrside-musl.db.tar.zst ]]; then
 else
 	warnung "kein musl-Repo unter $MUSL_REPO – ISO ohne usrside/repo/usrside-musl"
 fi
-COMMIT=${ABBILD_COMMIT:-$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null || echo unbekannt)}
+COMMIT=${ABBILD_COMMIT:-$(git -c safe.directory='*' -C "$BOOTSTRAP" rev-parse HEAD 2>/dev/null ||
+	git -c safe.directory='*' -C /root/rcyay rev-parse bootstrap 2>/dev/null || echo unbekannt)}
 printf '%s\n' "$COMMIT" >"$BAUM/usrside/commit"
 printf 'UsrsideOS %s (glibc-Live, Init %s, Installer %s%s)\n' "$DATUM" "$INIT" "${INSTALLER_COMMIT:0:8}" \
 	"$( ((OFFLINE)) && echo ', offline' || true)" >"$BAUM/usrside/version"
