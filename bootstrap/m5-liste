@@ -88,3 +88,23 @@ xcb-util-renderutil  arch:0.3.10-2             8579c76dc84ba7ada334d94007ebcc239
 xcb-util-image       arch:0.4.1-3              30959e333e464cf64929faf48eaff1d82dd6afd54b09fd26be3172dde9a46f33
 xcb-util-cursor      arch:0.1.6-1              a6d41d2bbf9ad0fb16435f74c931b95b896a24848955dc46e04c7cb7304081c0
 xwayland-satellite   arch:0.8.3-1              d5f46f2205641f094396703f1b77adbe165e4b03b3e77b24091e4ea733107078
+# Stufe 2h: Zielpakete für den musl-Installer (usrside-os install LIBC=musl, --print-packages)
+popt                 arch:1.19-2               35d4b58df08bd88eab6064e7657605fdf10b4f15e6b0afe89e135d1ecdd7fe44
+efivar               arch:39-2                 6cab4eabc3d5526c40f7434ad7f86bce475067a6dd41b232f9b6d2a8515faf82
+efibootmgr           arch:18-4                 11d8062bee2432de10af1185e06d3717f6a7d251e23e63a9116cbf14977c8dec
+lzo                  arch:2.10-5               ddc84bdc4fab5fb21cec7bb8611c61fb80a0b4b6fd3ec33d2ffa12503e5bdc5e
+util-linux           arch:2.42.4-1             bf6f0382d3ed8ab51c36b8cfcc8af238e60bd8a3cd7a6d4109dc4ba55b23b18c
+btrfs-progs          arch:7.3-1                7d4444e6b2410742a9cb24ac6ebdad0206aa79470d0eb23dc05e4d09258b1aa4
+ell                  arch:0.83-1               3a0151373d254d739daa8d596515bc9b0bf421767fce068b4a6698824a909dc8
+iwd                  arch:3.12-2               4db824b3b13d0761383199d7e047ebf4415c03691358681e6a99b51d85cf1ca3
+openresolv           arch:3.17.4-1             c909590e2a69be6426ac08708e407c8a4eff7e705a0141ee2a534500ef8a1e1c
+kbd                  arch:2.10.0-1             31330c85a5caaeda719e9c8cedab008fcad913be67954eb5ef6d27f55e74a9e2
+sudo                 arch:1.9.17.p2-7          07576278ec0b8b043229d7e847329e33a2e35fb7cc81df94079f57974046ff6f
+dosfstools           arch:4.2-5                5dc313544ba86893de17a07d1959c9a8675edd1d184ebdb30fe5fafbce630138
+shadow               arch:4.20.0.arch1-1       ada3d4ec74c31e987ddfc5b9abd5887a2a2bcccdb286ee4620e5d7104a9f8bac
+tzdata               arch:2026f-1              91948acb8341e791a6e06974a97277d46bb9cb1605e79fcad6b45e0deb323c73
+wl-clipboard         arch:1-2.3.0-1            76bca4c704049e51f781ec5514881947b72bb0e79524dc8c0e9ac1176829e5e3
+usrside-busybox      rcyay
+usrside-init         rcyay
+usrside-base         rcyay
+linux-firmware       arch:20261019-1           fc287a642cf93f59818b9dc03a93f816bd62365b9da962b3d826cd531ebfa66b

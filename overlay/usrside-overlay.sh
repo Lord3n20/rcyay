@@ -141,3 +141,18 @@ _usrside_patches() {
 		patch -Np1 -i "$startdir/usrside-patches/$p" || return 1
 	done
 }
+
+# usrside_busybox_doppelte: in package() aufrufen; entfernt aus $pkgdir/usr/bin alles, was im Bau-chroot als
+# BusyBox-Applet-Link existiert (passwd, mount, setfont …) – sonst Dateikonflikt mit dem Paket busybox.
+usrside_busybox_doppelte() {
+	local f n
+	for f in "$pkgdir"/usr/bin/*; do
+		[[ -e $f || -L $f ]] || continue
+		n=${f##*/}
+		if [[ -L /usr/bin/$n && $(readlink "/usr/bin/$n") == busybox ]]; then
+			echo "usrside-overlay: $n bleibt bei BusyBox"
+			rm -f "$f"
+			rm -f "$pkgdir/usr/share/man/man1/$n.1" "$pkgdir/usr/share/man/man8/$n.8"
+		fi
+	done
+}

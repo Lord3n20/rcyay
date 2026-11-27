@@ -24,7 +24,7 @@
 #   usrside-VARIANTE-live.cmdline    Vorschlag (console=…); init= wie in .inits
 #   usrside-VARIANTE-live.inits, …-live.commit
 # Umgebung: GROESSE (Standard 12G), SCHLUESSEL (authorized_keys für root, Standard /root/.ssh/authorized_keys),
-#   USRKRNL (Standard /root/usrsideos/usrkrnl bzw. ~/usrsideos/usrkrnl), PAKETE (Standard: alle aus dem Repo),
+#   USRKRNL (Standard /root/usrsideos/usrkrnl bzw. ~/usrsideos/usrkrnl), PAKETE (Standard: alle aus dem Repo außer OHNE),
 #   OHNE (Pakete, die im Repo bleiben, aber nicht installiert werden; Standard patch),
 #   KERNEL_NUTZER (normaler Nutzer für usrkrnl/setup, Standard bau), BUSYBOX_REPO (Repo mit busybox und musl
 #   fürs Initramfs, Standard $ARBEIT/musl/repo – das Initramfs ist für beide Varianten musl)
@@ -219,9 +219,10 @@ pakete_installieren() { # pakete_installieren ZIEL
 	# -Sy getrennt: sonst landen Fortschrittsmeldungen in der Paketliste
 	chroot "$WURZEL" env LC_ALL=C "$pm" -Sy >/dev/null
 	pakete=${PAKETE:-$(chroot "$WURZEL" env LC_ALL=C "$pm" -Slq "$REPONAME" | sort -u | tr '\n' ' ')}
-	# OHNE: im Repo lassen, aber nicht installieren (Standard patch – Testpaket für rcyay -S im Abbild)
+	# OHNE: im Repo lassen, aber nicht installieren (Standard: patch – Testpaket für rcyay -S im Abbild –
+	# und linux-firmware, nur für echte Rechner: Repo/ISO)
 	local o
-	for o in ${OHNE-patch}; do pakete=" $pakete "; pakete=${pakete// $o / }; done
+	for o in ${OHNE-patch linux-firmware}; do pakete=" $pakete "; pakete=${pakete// $o / }; done
 	# rust aus Quellen ersetzt die Saat (conflicts) – sonst bricht -S an dem Konflikt ab
 	if [[ " $pakete " == *" rust "* ]]; then pakete=" $pakete "; pakete=${pakete// rust-saat / }; fi
 	meldung "installiere: $pakete"

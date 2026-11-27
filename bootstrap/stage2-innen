@@ -111,6 +111,15 @@ pkgbuild_holen() {
 	eigen)
 		printf '%s\n' "/usrside/bootstrap/pakete/$name"
 		;;
+	rcyay)
+		# pkg/NAME aus dem rcyay-Stand von bootstrap/pakete/rcyay (rcyay-src.tar.gz, siehe stage2)
+		d=$BAU/rcyay-baum
+		rm -rf "$d"
+		mkdir -p "$d"
+		bsdtar -xf "$PKGQ/eigen/rcyay/rcyay-src.tar.gz" -C "$d"
+		[[ -f $d/rcyay/pkg/$name/PKGBUILD ]] || abbruch "$name: rcyay/pkg/$name/PKGBUILD fehlt"
+		printf '%s\n' "$d/rcyay/pkg/$name"
+		;;
 	arch:*)
 		tag=${herkunft#arch:}
 		datei=$PKGQ/arch/$name-$tag.tar.gz
@@ -140,6 +149,8 @@ paket() { # paket NAME HERKUNFT SHA FLAGS
 	chown -R bau:bau "$ziel"
 	# C.UTF-8: bsdtar scheitert sonst an UTF-8-Dateinamen (gcc-Testsuite)
 	local env="PKGDEST=$REPO SRCDEST=$PKGQ BUILDDIR=/var/tmp/bau SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH LC_ALL=C.UTF-8 LANG=C.UTF-8"
+	# usrside-init liest etc/rcyay.conf aus dem rcyay-Baum
+	[[ $herkunft == rcyay ]] && env+=" RCYAY_SRC=$BAU/rcyay-baum/rcyay"
 	# alten Bauordner eines fehlgeschlagenen Laufs weg: makepkg packt nur darüber aus, erzeugte Dateien
 	# (z. B. libpngs pnglibconf.h) blieben sonst stehen
 	rm -rf /var/tmp/bau/"$name"

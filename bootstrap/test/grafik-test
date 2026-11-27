@@ -80,6 +80,14 @@ chk "foot läuft" "pgrep -x foot"
 chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\$(ls /run/user/0/niri*.sock | head -n1); niri msg windows"
 GLN=${GT_GL:-virgl}
 chk "GL-Renderer ($GLN)" "grep -iE 'renderer|virgl|llvmpipe|egl' /tmp/niri.log | head -n5; grep -qi $GLN /tmp/niri.log"
+	# X11 unter niri (Stufe 2g): niri legt das X-Socket an und startet xwayland-satellite + Xwayland beim ersten Client
+	s 'cat >/tmp/x11-fenster.c' <"$(dirname "$0")/x11-fenster.c"
+	chk "Xwayland + xwayland-satellite vorhanden" "command -v Xwayland xwayland-satellite"
+	chk "X11-Fenster unter niri" "export XDG_RUNTIME_DIR=/run/user/0 NIRI_SOCKET=\$(ls /run/user/0/niri*.sock | head -n1);
+		x=\$(ls /tmp/.X11-unix/ 2>/dev/null | sed -n 's/^X//p' | head -n1); [ -n \"\$x\" ] || { grep -i xwayland /tmp/niri.log | tail -n3; exit 1; };
+		cc /tmp/x11-fenster.c -o /tmp/x11-fenster -lxcb && { DISPLAY=:\$x /tmp/x11-fenster 25 & sleep 8; };
+		echo DISPLAY=:\$x; ps -o pid,comm,args | grep -i [x]wayland; niri msg windows | grep -E 'Title|App ID';
+		niri msg windows | grep -q x11-fenster"
 fi
 # Ton (M5 2c): dbus-Sitzung, pipewire, wireplumber, pipewire-pulse
 chk "ALSA-Karte" "cat /proc/asound/cards; grep -q . /proc/asound/cards && ! grep -q 'no soundcards' /proc/asound/cards"
