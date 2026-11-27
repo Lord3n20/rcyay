@@ -191,10 +191,12 @@ spiegel() {
 # gebaut auf dem Arch-Bauwirt (glibc wie das Ziel) mit makepkg als Nutzer bau, Bauabhängigkeiten per pacman
 AUR_DEPS=""
 # Paketliste aus dem Installer selbst, wenn er den Trockenlauf kann: Zeilen "repo NAME" / "aur NAME"
-# (alle Profile, Inits und Optionen nach os_prepare); sonst die Arrays aus os/usrside.sh (Rückfall)
+# (alle Profile, Inits und Optionen nach os_prepare, ohne OFFLINE_OHNE + browser als Argumente; usrside-os 20f5fed);
+# sonst die Arrays aus os/usrside.sh (Rückfall)
 INST_LISTE=""
-if INST_LISTE=$(env -i PATH="$PATH" HOME=/tmp OFFLINE_OHNE="$OFFLINE_OHNE" \
-	"$RFS/usr/share/usrside-installer/install" --print-packages 2>/dev/null) &&
+read -ra WEG <<<"$OFFLINE_OHNE ${AUR_OHNE-browser}"
+if INST_LISTE=$(env -i PATH="$PATH" HOME=/tmp \
+	"$RFS/usr/share/usrside-installer/install" --print-packages "${WEG[@]}" 2>/dev/null) &&
 	grep -qE '^(repo|aur) [^ ]+$' <<<"$INST_LISTE"; then
 	INST_LISTE=$(grep -E '^(repo|aur) [^ ]+$' <<<"$INST_LISTE")
 	meldung "Paketliste aus install --print-packages: $(wc -l <<<"$INST_LISTE") Einträge"
