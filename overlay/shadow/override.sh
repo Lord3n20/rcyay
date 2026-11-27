@@ -11,6 +11,8 @@ usrside_ohne git acl audit docbook-xsl itstool libcap libxslt pam
 prepare() { :; }
 build() {
 	cd $pkgname
+	# find_new_sub_gids.c nutzt uintmax_t ohne <stdint.h> (glibc bringt es über andere Header mit)
+	export CFLAGS="$CFLAGS -include stdint.h"
 	./configure --prefix=/usr --bindir=/usr/bin --sbindir=/usr/bin --libdir=/usr/lib --sysconfdir=/etc \
 		--mandir=/usr/share/man --disable-account-tools-setuid --disable-man --disable-nls \
 		--with-group-name-max-length=32 --without-libpam --without-audit --without-acl --without-attr \
@@ -21,6 +23,11 @@ build() {
 package() {
 	cd $pkgname
 	make DESTDIR="$pkgdir" install
+	# shadow 4.20 legt useradd … trotz --sbindir nach usr/sbin; /usr/sbin ist ein Symlink (filesystem)
+	if [[ -d $pkgdir/usr/sbin ]]; then
+		mv -n "$pkgdir"/usr/sbin/* "$pkgdir/usr/bin/"
+		rmdir "$pkgdir/usr/sbin"
+	fi
 	usrside_busybox_doppelte
 	# nologin liefert util-linux
 	rm -f "$pkgdir/usr/bin/nologin" "$pkgdir/usr/share/man/man8/nologin.8"
