@@ -394,7 +394,7 @@ beigaben() { # .inits und .commit
 
 # der Kernel hängt nicht von der Variante ab: eine Marke für musl und glibc
 # (-2: Live-Kernel ohne CMDLINE, USB/NVMe/exFAT fest eingebaut)
-FERTIG=$KBAU/fertig schritt abbild-kernel-3 kernel
+FERTIG=$KBAU/fertig schritt abbild-kernel-4 kernel
 ((NUR_KERNEL)) && exit 0
 rootfs_bauen
 meldung "Rootfs fertig: $RFS"
