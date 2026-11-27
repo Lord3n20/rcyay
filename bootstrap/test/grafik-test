@@ -42,7 +42,6 @@ nice -n 19 taskset -c "$CPUS" qemu-system-x86_64 -name grafik-test -enable-kvm -
 	-nic user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:"$PORT"-:22 \
 	-device virtio-vga-gl -display egl-headless${RN:+,rendernode=$RN} \
 	-device virtio-keyboard-pci -device virtio-tablet-pci \
-	-monitor unix:"$W/mon",server,nowait \
 	-serial file:"$W/serial.log" -pidfile "$W/qemu.pid" -daemonize || { bad "qemu startet nicht"; exit 1; }
 for i in $(seq 120); do
 	s true 2>/dev/null && { ok "SSH nach $((i * 2)) s"; break; }
@@ -66,13 +65,16 @@ chk "niri msg windows" "export XDG_RUNTIME_DIR=/run/user/0; export NIRI_SOCKET=\
 chk "GL-Renderer (virgl)" "grep -iE 'renderer|virgl|egl' /tmp/niri.log | head -n5; grep -qi virgl /tmp/niri.log"
 s 'tail -n 40 /tmp/niri.log' >"$AUS/grafik-$ZEIT.niri.log" 2>&1
 s 'dmesg' >"$AUS/grafik-$ZEIT.dmesg" 2>&1
-python3 -I -c 'import socket,sys,time; c=socket.socket(socket.AF_UNIX); c.connect(sys.argv[1]); time.sleep(0.5); c.recv(4096); c.sendall(("screendump "+sys.argv[2]+"\n").encode()); time.sleep(2); c.close()' "$W/mon" "$W/bild.ppm"
-if [[ -s $W/bild.ppm ]]; then
-	python3 -I -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$W/bild.ppm" "$AUS/grafik-$ZEIT.png" 2>/dev/null ||
-		cp "$W/bild.ppm" "$AUS/grafik-$ZEIT.ppm"
-	ok "Bildschirmfoto $(ls "$AUS"/grafik-"$ZEIT".p?g)"
+# Bildschirmfoto über niri selbst (qemu-screendump hat bei GL-Scanout mit egl-headless „no surface“)
+# shellcheck disable=SC2016 # läuft im Gast
+s 'export XDG_RUNTIME_DIR=/run/user/0 NIRI_SOCKET=$(ls /run/user/0/niri*.sock | head -n1); rm -rf /root/Pictures/Screenshots;
+	niri msg action screenshot-screen >/dev/null; sleep 3; ls -t /root/Pictures/Screenshots/*.png | head -n1' >"$W/foto" 2>>"$LOG"
+f=$(head -n1 "$W/foto")
+if [[ -n $f ]] && scp -q -i "$KEY" -P "$PORT" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+	"root@127.0.0.1:$f" "$AUS/grafik-$ZEIT.png" && [[ -s $AUS/grafik-$ZEIT.png ]]; then
+	ok "Bildschirmfoto $AUS/grafik-$ZEIT.png"
 else
-	bad "kein Bildschirmfoto"
+	bad "kein Bildschirmfoto ($(cat "$W/foto"))"
 fi
 s 'poweroff' >/dev/null 2>&1
 sleep 5
