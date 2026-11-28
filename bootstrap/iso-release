@@ -1,0 +1,53 @@
+#!/bin/bash
+# iso-release TEST-ISO AUS.iso – release ISO from a tested test ISO (bootstrap/iso with SCHLUESSEL):
+# the only change is that root/.ssh/authorized_keys (test key) is removed from usrside/rootfs.sfs.
+# Same squashfs parameters, same volume id, same EFI partition (taken from the test ISO).
+# Checks at the end: file list of the new rootfs = old list minus that file, all other files identical.
+# Needs root (unsquashfs keeps owners), squashfs-tools, xorriso.
+set -euo pipefail
+IN=$(readlink -f "${1:?TEST-ISO}"); OUT=$(readlink -f "${2:?AUS.iso}")
+[[ $(id -u) = 0 ]] || { echo "needs root"; exit 1; }
+W=$(mktemp -d "${TMPDIR:-/var/tmp}/iso-release.XXXXXX"); trap 'umount -q "$W/iso" 2>/dev/null; rm -rf "$W"' EXIT
+mkdir -p "$W/iso" "$W/baum"
+mount -o loop,ro "$IN" "$W/iso"
+VOLID=$(xorriso -indev "$IN" -pvd_info 2>/dev/null | sed -n 's/^Volume Id *: //p')
+[[ -n $VOLID ]] || { echo "no volume id"; exit 1; }
+echo ":: tree ($VOLID)"
+cp -a "$W/iso/." "$W/baum/"
+chmod -R u+w "$W/baum"
+echo ":: rootfs without test key"
+unsquashfs -q -d "$W/rfs" "$W/iso/usrside/rootfs.sfs"
+[[ -e $W/rfs/root/.ssh/authorized_keys ]] && rm -f "$W/rfs/root/.ssh/authorized_keys" || echo "   (no authorized_keys in rootfs)"
+rm -f "$W/baum/usrside/rootfs.sfs"
+mksquashfs "$W/rfs" "$W/baum/usrside/rootfs.sfs" -comp zstd -Xcompression-level 19 -b 1M -noappend -quiet
+echo ":: check rootfs"
+# perms owner size name (directory sizes depend on the packing and are left out)
+liste() { unsquashfs -lls "$1" | awk 'NR>3 { sub(/^squashfs-root/, "", $6); print $1, $2, (substr($1,1,1) == "d" ? "-" : $3), $6, $7, $8 }' | sort; }
+liste "$W/iso/usrside/rootfs.sfs" >"$W/alt.txt"
+liste "$W/baum/usrside/rootfs.sfs" >"$W/neu.txt"
+d=$(diff "$W/alt.txt" "$W/neu.txt" | grep '^[<>]' || true)
+echo "   diff: ${d:-none}"
+if [[ -n $d ]]; then
+	[[ $(wc -l <<<"$d") = 1 && $d == "<"*" /root/.ssh/authorized_keys"* ]] || { echo "rootfs differs by more than the test key"; exit 1; }
+fi
+# content: every file of the new rootfs equals the extracted old one
+unsquashfs -q -d "$W/neu" "$W/baum/usrside/rootfs.sfs"
+diff -r --no-dereference "$W/rfs" "$W/neu" && echo "   content identical (except the test key)"
+rm -rf "$W/neu"
+echo ":: EFI partition from the test ISO"
+read -r start size < <(partx -g -o START,SECTORS -n 2 "$IN")
+[[ -n ${start:-} && -n ${size:-} ]] || { echo "no partition 2 in $IN"; exit 1; }
+dd if="$IN" of="$W/efi.img" bs=512 skip="$start" count="$size" status=none
+mdir -i "$W/efi.img" ::/EFI/BOOT/BOOTX64.EFI >/dev/null
+cmp <(mtype -i "$W/efi.img" ::/EFI/BOOT/BOOTX64.EFI) "$W/iso/EFI/BOOT/BOOTX64.EFI" && echo "   BOOTX64.EFI same as in the tree"
+umount "$W/iso"
+echo ":: xorriso"
+xorriso -as mkisofs -iso-level 3 -full-iso9660-filenames -joliet -joliet-long -rational-rock \
+	-volid "$VOLID" -appid "UsrsideOS Live/Installer" -publisher "UsrsideOS" \
+	-partition_offset 16 \
+	-append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B "$W/efi.img" -appended_part_as_gpt \
+	-e --interval:appended_partition_2:all:: -no-emul-boot \
+	-o "$OUT" "$W/baum" 2>&1 | grep -v '^xorriso : UPDATE' || true
+[[ -s $OUT ]] || { echo "no ISO"; exit 1; }
+(cd "$(dirname "$OUT")" && sha256sum "$(basename "$OUT")" >"$(basename "$OUT").sha256")
+ls -l "$OUT"; cat "$OUT.sha256"
