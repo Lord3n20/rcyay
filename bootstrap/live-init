@@ -17,6 +17,12 @@ mount -t devtmpfs devtmpfs /dev 2>/dev/null
 SFS=usrside/rootfs.sfs
 LIVE=/run/usrside
 mkdir -p /run "$LIVE/medium" "$LIVE/iso" "$LIVE/ro" "$LIVE/rw" /neu
+# Standardkernel (bootstrap/iso-standardkernel): Speicher-/Dateisystem-Module liegen im Initramfs; usrkrnl hat sie eingebaut
+if [ -d "/lib/modules/$(uname -r)" ]; then
+	find "/lib/modules/$(uname -r)" -name '*.ko' | sed 's|.*/||; s|\.ko$||' | while read -r m; do
+		modprobe "$m" 2>/dev/null
+	done
+fi
 
 # Meldungen auf die Konsole (bei console=…ttyS0 zuletzt die serielle) und zusätzlich auf den Bildschirm
 say() {
